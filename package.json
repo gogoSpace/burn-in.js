@@ -1,0 +1,68 @@
+{
+  "name": "@gogospace/burn-in",
+  "version": "0.0.0",
+  "description": "Configurable fire and smoke burn-in effects for DOM elements, images, canvas, and Vue.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Jiří Gogo Bílek",
+  "homepage": "https://github.com/gogoSpace/burn-in.js#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gogoSpace/burn-in.js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gogoSpace/burn-in.js/issues"
+  },
+  "keywords": [
+    "burn",
+    "burn-in",
+    "fire",
+    "smoke",
+    "canvas",
+    "animation",
+    "vue"
+  ],
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vue": {
+      "types": "./dist/vue.d.ts",
+      "import": "./dist/vue.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "dev": "vite --config demo/vite.config.ts",
+    "build": "npm run typecheck && vite build",
+    "build:demo": "vite build --config demo/vite.config.ts",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.build.json",
+    "test": "vitest run",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0 || ^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^4.0.15",
+    "vue": "^3.5.25"
+  }
+}
