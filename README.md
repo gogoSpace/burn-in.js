@@ -45,6 +45,15 @@ const replayKey = ref(0);
   >
     <strong>Burn me in</strong>
   </BurnIn>
+
+  <BurnIn
+    active
+    target-selector="img"
+    :replay-key="replayKey"
+    :options="{ mask: { source: 'alpha' } }"
+  >
+    <img src="/logo.png" alt="Logo" />
+  </BurnIn>
 </template>
 ```
 
@@ -134,15 +143,6 @@ npm run build
 ```
 
 The demo runs through Vite on port `5177`.
-
-## Publishing Checklist
-
-Before the first npm release:
-
-1. Confirm the public package name: `@gogospace/burn-in`.
-2. Run `npm test`, `npm run build`, `npm run build:demo`, and `npm run pack:dry`.
-3. Publish with `npm publish --access public` after npm authentication is working.
-4. Prefer npm Trusted Publishing from GitHub Actions for later releases.
 
 ## License
 

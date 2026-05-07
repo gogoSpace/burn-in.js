@@ -24,13 +24,25 @@ export const BurnIn = defineComponent({
     contentClass: {
       type: [String, Array, Object],
       default: null
+    },
+    targetSelector: {
+      type: String,
+      default: ""
     }
   },
   emits: ["start", "done", "cancel"],
   setup(props, { emit, expose, slots }) {
     const hostElement = ref<HTMLElement | null>(null);
-    const targetElement = ref<HTMLElement | null>(null);
+    const wrappedTargetElement = ref<HTMLElement | null>(null);
     let controller: BurnController | null = null;
+
+    const resolveTargetElement = (): HTMLElement | null => {
+      if (!props.targetSelector) {
+        return wrappedTargetElement.value;
+      }
+
+      return hostElement.value?.querySelector<HTMLElement>(props.targetSelector) ?? null;
+    };
 
     const cancel = () => {
       if (!controller) {
@@ -45,13 +57,15 @@ export const BurnIn = defineComponent({
     const play = async () => {
       await nextTick();
 
-      if (!targetElement.value || !hostElement.value) {
+      const targetElement = resolveTargetElement();
+
+      if (!targetElement || !hostElement.value) {
         return null;
       }
 
       cancel();
       emit("start");
-      const activeController = burn(targetElement.value, {
+      const activeController = burn(targetElement, {
         ...props.options,
         host: hostElement.value
       });
@@ -97,7 +111,7 @@ export const BurnIn = defineComponent({
           h(
             "span",
             {
-              ref: targetElement,
+              ref: wrappedTargetElement,
               class: ["burn-in-target", props.contentClass],
               style: {
                 display: "inline-block"
