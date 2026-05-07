@@ -1,5 +1,5 @@
 # Changelog
 
-## 0.0.0
+## 0.1.0
 
-- Initial private development version.
+- Initial public release.

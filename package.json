@@ -1,6 +1,6 @@
 {
   "name": "@gogospace/burn-in",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Configurable fire and smoke burn-in effects for DOM elements, images, canvas, and Vue.",
   "type": "module",
   "license": "MIT",

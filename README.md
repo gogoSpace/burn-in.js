@@ -8,8 +8,6 @@ It ships as a framework-neutral core with an optional Vue 3 adapter.
 npm install @gogospace/burn-in
 ```
 
-> The package is not published yet. This repository is in private pre-release development.
-
 ## Quick Start
 
 ```ts
