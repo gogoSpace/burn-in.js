@@ -43,6 +43,6 @@ describe("resolveBurnOptions", () => {
 
     expect(options.mask.source).toBe("text");
     expect(options.mask.offset.x).toBe(0);
-    expect(options.mask.offset.y).toBe(10);
+    expect(options.mask.offset.y).toBe(6);
   });
 });

@@ -65,6 +65,9 @@ const presets: DemoPreset[] = [
 
 const selectedPreset = ref<BurnPresetName>("soft");
 const replayKey = ref(0);
+const initialDelayMs = 840;
+const replayDelayMs = 420;
+const burnDelayMs = ref(initialDelayMs);
 const isActive = ref(true);
 const fireIntensity = ref(0.5);
 const smokeIntensity = ref(0.33);
@@ -76,6 +79,7 @@ const burnOptions = computed<BurnOptions>(() => ({
   preset: selectedPreset.value,
   seed: seed.value,
   timing: {
+    delayMs: burnDelayMs.value,
     burnMs: burnDurationMs.value,
     smokeMs: smokeDurationMs.value,
   },
@@ -104,6 +108,7 @@ const burnOptions = computed<BurnOptions>(() => ({
 }));
 
 function replay(): void {
+  burnDelayMs.value = replayDelayMs;
   isActive.value = false;
   requestAnimationFrame(() => {
     replayKey.value += 1;
