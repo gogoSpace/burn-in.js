@@ -4,6 +4,8 @@ Burn-In.js is a small canvas engine for burning DOM elements into view with conf
 
 It ships as a framework-neutral core with an optional Vue 3 adapter.
 
+Live demo: [burn-in.gogospace.cz](https://burn-in.gogospace.cz/)
+
 ```bash
 npm install @gogospace/burn-in
 ```
