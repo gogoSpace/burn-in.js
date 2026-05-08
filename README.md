@@ -68,6 +68,7 @@ burn(element, {
   preset: "wildfire",
   seed: "same-effect-every-time",
   timing: {
+    delayMs: 420,
     igniteMs: 420,
     burnMs: 1000,
     fadeMs: 900,
@@ -127,11 +128,15 @@ burn(headingElement, {
   mask: {
     source: "text",
     offset: {
-      y: 8
+      y: 6
     }
   }
 });
 ```
+
+Text masks are useful for headings, spans, paragraphs, and other real DOM text. The effect uses an internal alpha mask for the fire and smoke, while the original text remains selectable and accessible after reveal.
+
+Use `mask.offset.x` and `mask.offset.y` to fine-tune emitter alignment. Positive `y` moves the burn mask downward, which can make rising fire and smoke feel more natural over text.
 
 Supported mask sources:
 
