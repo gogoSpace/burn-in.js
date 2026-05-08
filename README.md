@@ -100,6 +100,8 @@ burn(element, {
 });
 ```
 
+`seed` controls the random particle pattern. Use a stable string or number when you want the same element and options to replay with the same fire and smoke behavior. Omit it when every burn should feel slightly different.
+
 ## Presets
 
 - `soft` - default profile matching the original Burn concept timing and density
