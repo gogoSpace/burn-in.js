@@ -7,11 +7,11 @@ describe("resolveBurnOptions", () => {
       preset: "wildfire",
       fire: {
         intensity: 2,
-        colors: [{ at: 0, color: "red" }]
+        colors: [{ at: 0, color: "red" }],
       },
       smoke: {
-        enabled: false
-      }
+        enabled: false,
+      },
     });
 
     expect(options.preset).toBe("wildfire");
@@ -29,5 +29,20 @@ describe("resolveBurnOptions", () => {
     expect(options.fire.colors.length).toBeGreaterThan(0);
     expect(options.smoke.colors.length).toBeGreaterThan(0);
     expect(options.mask.padding.top).toBeGreaterThan(0);
+  });
+
+  it("accepts text as a mask source", () => {
+    const options = resolveBurnOptions({
+      mask: {
+        source: "text",
+        offset: {
+          y: 6,
+        },
+      },
+    });
+
+    expect(options.mask.source).toBe("text");
+    expect(options.mask.offset.x).toBe(0);
+    expect(options.mask.offset.y).toBe(10);
   });
 });

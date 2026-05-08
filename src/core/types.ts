@@ -8,7 +8,7 @@ export type BurnEasingName =
   | "easeInOutCubic"
   | "easeOutQuart";
 
-export type BurnMaskSource = "auto" | "alpha" | "luminance" | "bounds";
+export type BurnMaskSource = "auto" | "alpha" | "luminance" | "bounds" | "text";
 
 export type BurnRange = number | [number, number];
 
@@ -55,6 +55,10 @@ export type BurnMaskOptions = {
     top?: number;
     bottom?: number;
   };
+  offset?: {
+    x?: number;
+    y?: number;
+  };
   edgeBias?: number;
 };
 
@@ -100,8 +104,9 @@ export type ResolvedBurnTimingOptions = Required<Omit<BurnTimingOptions, "easing
 
 export type ResolvedBurnParticleOptions = Required<BurnParticleOptions>;
 
-export type ResolvedBurnMaskOptions = Required<Omit<BurnMaskOptions, "padding">> & {
+export type ResolvedBurnMaskOptions = Required<Omit<BurnMaskOptions, "padding" | "offset">> & {
   padding: Required<NonNullable<BurnMaskOptions["padding"]>>;
+  offset: Required<NonNullable<BurnMaskOptions["offset"]>>;
 };
 
 export type ResolvedBurnRevealOptions = Required<BurnRevealOptions>;

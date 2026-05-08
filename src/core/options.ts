@@ -73,6 +73,10 @@ export const defaultBurnOptions: ResolvedBurnOptions = {
       top: 0.7,
       bottom: 0.25
     },
+    offset: {
+      x: 0,
+      y: 0
+    },
     edgeBias: 0
   },
   reveal: {

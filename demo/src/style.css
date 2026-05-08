@@ -146,10 +146,37 @@ h1 {
 .artifact-burn-target {
   position: absolute;
   inset: 6% 5%;
-  display: block;
+  display: grid;
+  place-items: center;
   width: 90%;
   height: 88%;
+  color: rgba(42, 18, 6, 0.92);
+  text-align: center;
+  text-shadow: 0 0.04em 0.18em rgba(62, 27, 8, 0.42);
+  user-select: text;
   z-index: 1;
+}
+
+.artifact-kicker {
+  align-self: end;
+  color: rgba(62, 27, 8, 0.76);
+  font-size: clamp(1.4rem, 4.2vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.artifact strong {
+  font-size: clamp(4.6rem, 12.8vw, 8.2rem);
+  font-weight: 900;
+  line-height: 0.85;
+}
+
+.artifact small {
+  align-self: start;
+  color: rgba(56, 25, 9, 0.68);
+  font-size: clamp(1.25rem, 2.7vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1;
 }
 
 .control-surface {

@@ -41,7 +41,7 @@ const replayKey = ref(0);
   <BurnIn
     active
     :replay-key="replayKey"
-    :options="{ preset: 'smolder', smoke: { intensity: 1.4 } }"
+    :options="{ preset: 'smolder', mask: { source: 'text' }, smoke: { intensity: 1.4 } }"
   >
     <strong>Burn me in</strong>
   </BurnIn>
@@ -108,7 +108,7 @@ burn(element, {
 
 ## Masks
 
-Images and canvas elements can use pixel data automatically. Generic DOM elements use their bounds, which means any element can be burned into view without extra dependencies.
+Images and canvas elements can use pixel data automatically. Text elements can use a generated alpha mask while staying real selectable DOM text. Generic DOM elements use their bounds, which means any element can be burned into view without extra dependencies.
 
 ```ts
 burn(imageElement, {
@@ -120,12 +120,24 @@ burn(imageElement, {
 });
 ```
 
+```ts
+burn(headingElement, {
+  mask: {
+    source: "text",
+    offset: {
+      y: 8
+    }
+  }
+});
+```
+
 Supported mask sources:
 
 - `auto`
 - `alpha`
 - `luminance`
 - `bounds`
+- `text`
 
 ## Browser Notes
 
