@@ -17,34 +17,42 @@ type Particle = {
   seed: number;
 };
 
-function ensurePositioned(element: HTMLElement): string {
-  const originalPosition = element.style.position;
-  const computedPosition = getComputedStyle(element).position;
+type DrawableParticle = {
+  alpha: number;
+  particle: Particle;
+  size: number;
+};
 
-  if (computedPosition === "static") {
-    element.style.position = "relative";
-  }
+const canvasExpansionPadding = 256;
+const canvasExpansionThreshold = 64;
 
-  return originalPosition;
-}
-
-function resolveHost(target: HTMLElement, options: ResolvedBurnOptions): HTMLElement {
+function resolveCanvasRoot(target: HTMLElement, options: ResolvedBurnOptions): HTMLElement {
   if (options.host) {
     return options.host;
   }
 
-  const parent = target.parentElement;
+  const { body } = target.ownerDocument;
 
-  if (!parent) {
-    throw new Error("Burn-In.js: target element must have a parent host.");
+  if (!body) {
+    throw new Error("Burn-In.js: target element must belong to a document with a body.");
   }
 
-  return parent;
+  return body;
 }
 
-function resolvePixelRatio(options: ResolvedBurnOptions): number {
+function resolveOwnerWindow(target: HTMLElement): Window {
+  const ownerWindow = target.ownerDocument.defaultView;
+
+  if (!ownerWindow) {
+    throw new Error("Burn-In.js: target element must belong to a window.");
+  }
+
+  return ownerWindow;
+}
+
+function resolvePixelRatio(options: ResolvedBurnOptions, ownerWindow: Window): number {
   if (options.canvas.pixelRatio === "device") {
-    return Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    return Math.max(1, Math.min(2, ownerWindow.devicePixelRatio || 1));
   }
 
   return Math.max(1, options.canvas.pixelRatio);
@@ -58,7 +66,8 @@ export class BurnInEffect implements BurnController {
   public readonly done: Promise<void>;
 
   private readonly target: HTMLElement;
-  private readonly host: HTMLElement;
+  private readonly canvasRoot: HTMLElement;
+  private readonly ownerWindow: Window;
   private readonly options: ResolvedBurnOptions;
   private readonly random: BurnRandom;
   private readonly canvas: HTMLCanvasElement;
@@ -66,24 +75,31 @@ export class BurnInEffect implements BurnController {
   private readonly fireSprite: HTMLCanvasElement;
   private readonly smokeSprite: HTMLCanvasElement;
   private readonly originalTargetOpacity: string;
-  private readonly originalHostPosition: string;
+  private readonly handleViewportChange = (): void => {
+    this.positionCanvas();
+  };
   private readonly fireParticles: Particle[] = [];
   private readonly smokeParticles: Particle[] = [];
   private emitters: BurnEmitter[] = [];
   private coveredPixelCount = 0;
   private animationFrame = 0;
+  private canvasStyleHeight = 0;
+  private canvasStyleWidth = 0;
+  private canvasPaddingX = 0;
+  private canvasPaddingTop = 0;
+  private pixelRatio = 1;
   private startTime: number | null = null;
   private settled = false;
   private resolveDone!: () => void;
 
   public constructor(target: HTMLElement, options: BurnOptions = {}) {
     this.target = target;
+    this.ownerWindow = resolveOwnerWindow(target);
     this.options = resolveBurnOptions(options);
-    this.host = resolveHost(target, this.options);
+    this.canvasRoot = resolveCanvasRoot(target, this.options);
     this.random = new BurnRandom(this.options.seed);
     this.originalTargetOpacity = target.style.opacity;
-    this.originalHostPosition = ensurePositioned(this.host);
-    this.canvas = document.createElement("canvas");
+    this.canvas = target.ownerDocument.createElement("canvas");
     this.canvas.className = this.options.canvas.className;
     this.context = this.createContext(this.canvas);
     this.fireSprite = createRadialSprite(this.options.fire.spriteSize, this.options.fire.colors);
@@ -100,14 +116,14 @@ export class BurnInEffect implements BurnController {
     this.layout();
     this.target.style.opacity = String(this.options.reveal.opacityFrom);
 
-    window.setTimeout(() => {
+    this.ownerWindow.setTimeout(() => {
       if (this.settled) {
         return;
       }
 
       this.startTime = null;
       this.options.hooks.onIgnite?.();
-      this.animationFrame = requestAnimationFrame((timeStamp) => this.frame(timeStamp));
+      this.animationFrame = this.ownerWindow.requestAnimationFrame((timeStamp) => this.frame(timeStamp));
     }, this.options.timing.delayMs);
 
     return this;
@@ -118,7 +134,7 @@ export class BurnInEffect implements BurnController {
       return;
     }
 
-    cancelAnimationFrame(this.animationFrame);
+    this.ownerWindow.cancelAnimationFrame(this.animationFrame);
     this.options.hooks.onCancel?.();
     this.finish(false);
   }
@@ -135,19 +151,21 @@ export class BurnInEffect implements BurnController {
 
   private mountCanvas(): void {
     Object.assign(this.canvas.style, {
-      position: "absolute",
+      position: "fixed",
       left: "0",
       top: "0",
       pointerEvents: this.options.canvas.pointerEvents,
       zIndex: String(this.options.canvas.zIndex)
     });
 
-    this.host.appendChild(this.canvas);
+    this.canvasRoot.appendChild(this.canvas);
+    this.ownerWindow.addEventListener("scroll", this.handleViewportChange, { passive: true });
+    this.ownerWindow.addEventListener("resize", this.handleViewportChange);
+    this.ownerWindow.visualViewport?.addEventListener("scroll", this.handleViewportChange, { passive: true });
+    this.ownerWindow.visualViewport?.addEventListener("resize", this.handleViewportChange);
   }
 
   private layout(): void {
-    const hostRect = this.host.getBoundingClientRect();
-    const targetRect = this.target.getBoundingClientRect();
     const source = buildBurnSource(this.target, this.options.mask);
     const expectedSmoke = this.options.smoke.enabled
       ? this.options.smoke.spriteSize * (1 + this.options.smoke.expansion) * Math.max(0.2, this.options.smoke.intensity)
@@ -155,24 +173,91 @@ export class BurnInEffect implements BurnController {
     const paddingX = Math.round(Math.max(source.width * this.options.mask.padding.x, expectedSmoke * 0.48));
     const paddingTop = Math.round(source.height * this.options.mask.padding.top + expectedSmoke * 0.72);
     const paddingBottom = Math.round(Math.max(source.height * this.options.mask.padding.bottom, expectedSmoke * 0.24));
-    const cssWidth = Math.max(1, Math.round(source.width + paddingX * 2));
-    const cssHeight = Math.max(1, Math.round(source.height + paddingTop + paddingBottom));
-    const pixelRatio = resolvePixelRatio(this.options);
+    const styleWidth = Math.max(1, Math.round(source.width + paddingX * 2));
+    const styleHeight = Math.max(1, Math.round(source.height + paddingTop + paddingBottom));
+    this.pixelRatio = resolvePixelRatio(this.options, this.ownerWindow);
 
     this.emitters = source.emitters.map((emitter) => ({
       x: emitter.x + paddingX,
       y: emitter.y + paddingTop,
       weight: emitter.weight
     }));
+    this.canvasPaddingX = paddingX;
+    this.canvasPaddingTop = paddingTop;
     this.coveredPixelCount = Math.max(1, source.emitters.length * this.options.mask.stepPx * this.options.mask.stepPx);
+    this.resizeCanvas(styleWidth, styleHeight);
+    this.positionCanvas();
+  }
 
-    this.canvas.width = Math.max(1, Math.round(cssWidth * pixelRatio));
-    this.canvas.height = Math.max(1, Math.round(cssHeight * pixelRatio));
-    this.canvas.style.width = `${cssWidth}px`;
-    this.canvas.style.height = `${cssHeight}px`;
-    this.canvas.style.left = `${Math.round(targetRect.left - hostRect.left - paddingX)}px`;
-    this.canvas.style.top = `${Math.round(targetRect.top - hostRect.top - paddingTop)}px`;
-    this.context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  private positionCanvas(): void {
+    const targetRect = this.target.getBoundingClientRect();
+
+    this.canvas.style.left = `${Math.round(targetRect.left - this.canvasPaddingX)}px`;
+    this.canvas.style.top = `${Math.round(targetRect.top - this.canvasPaddingTop)}px`;
+  }
+
+  private resizeCanvas(styleWidth: number, styleHeight: number): void {
+    this.canvasStyleWidth = Math.max(1, styleWidth);
+    this.canvasStyleHeight = Math.max(1, styleHeight);
+    this.canvas.width = Math.max(1, Math.round(this.canvasStyleWidth * this.pixelRatio));
+    this.canvas.height = Math.max(1, Math.round(this.canvasStyleHeight * this.pixelRatio));
+    this.canvas.style.width = `${this.canvasStyleWidth}px`;
+    this.canvas.style.height = `${this.canvasStyleHeight}px`;
+    this.context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+  }
+
+  private expandCanvas(expandLeft: number, expandTop: number, expandRight: number, expandBottom: number): void {
+    if (expandLeft === 0 && expandTop === 0 && expandRight === 0 && expandBottom === 0) {
+      return;
+    }
+
+    this.canvasPaddingX += expandLeft;
+    this.canvasPaddingTop += expandTop;
+
+    if (expandLeft > 0 || expandTop > 0) {
+      this.emitters = this.emitters.map((emitter) => ({
+        ...emitter,
+        x: emitter.x + expandLeft,
+        y: emitter.y + expandTop
+      }));
+
+      for (const particle of [...this.fireParticles, ...this.smokeParticles]) {
+        particle.x += expandLeft;
+        particle.y += expandTop;
+      }
+    }
+
+    this.resizeCanvas(this.canvasStyleWidth + expandLeft + expandRight, this.canvasStyleHeight + expandTop + expandBottom);
+    this.positionCanvas();
+  }
+
+  private ensureParticleBounds(drawableParticles: DrawableParticle[]): void {
+    if (drawableParticles.length === 0) {
+      return;
+    }
+
+    let minimumX = Number.POSITIVE_INFINITY;
+    let minimumY = Number.POSITIVE_INFINITY;
+    let maximumX = Number.NEGATIVE_INFINITY;
+    let maximumY = Number.NEGATIVE_INFINITY;
+
+    for (const drawableParticle of drawableParticles) {
+      const halfSize = drawableParticle.size / 2;
+
+      minimumX = Math.min(minimumX, drawableParticle.particle.x - halfSize);
+      minimumY = Math.min(minimumY, drawableParticle.particle.y - halfSize);
+      maximumX = Math.max(maximumX, drawableParticle.particle.x + halfSize);
+      maximumY = Math.max(maximumY, drawableParticle.particle.y + halfSize);
+    }
+
+    const expandLeft = minimumX < canvasExpansionThreshold ? Math.ceil(canvasExpansionPadding - minimumX) : 0;
+    const expandTop = minimumY < canvasExpansionThreshold ? Math.ceil(canvasExpansionPadding - minimumY) : 0;
+    const expandRight =
+      maximumX > this.canvasStyleWidth - canvasExpansionThreshold ? Math.ceil(maximumX - this.canvasStyleWidth + canvasExpansionPadding) : 0;
+    const expandBottom =
+      maximumY > this.canvasStyleHeight - canvasExpansionThreshold ? Math.ceil(maximumY - this.canvasStyleHeight + canvasExpansionPadding) : 0;
+
+    this.expandCanvas(expandLeft, expandTop, expandRight, expandBottom);
   }
 
   private spawnParticles(kind: "fire" | "smoke", amount: number, force: number): void {
@@ -207,12 +292,10 @@ export class BurnInEffect implements BurnController {
     }
   }
 
-  private drawParticles(kind: "fire" | "smoke"): void {
+  private updateParticles(kind: "fire" | "smoke"): DrawableParticle[] {
     const options = kind === "fire" ? this.options.fire : this.options.smoke;
     const particles = kind === "fire" ? this.fireParticles : this.smokeParticles;
-    const sprite = kind === "fire" ? this.fireSprite : this.smokeSprite;
-
-    this.context.globalCompositeOperation = options.composite;
+    const drawableParticles: DrawableParticle[] = [];
 
     for (let index = particles.length - 1; index >= 0; index -= 1) {
       const particle = particles[index];
@@ -235,8 +318,31 @@ export class BurnInEffect implements BurnController {
       const alpha = particle.alpha * (kind === "fire" ? 1 - progress : 1 - progress * 0.9);
       const size = particle.size * (kind === "fire" ? 0.62 + options.expansion * (1 - progress) : 1 + progress * options.expansion);
 
-      this.context.globalAlpha = Math.max(0, alpha);
-      this.context.drawImage(sprite, particle.x - size / 2, particle.y - size / 2, size, size);
+      drawableParticles.push({
+        alpha: Math.max(0, alpha),
+        particle,
+        size
+      });
+    }
+
+    return drawableParticles;
+  }
+
+  private drawParticles(kind: "fire" | "smoke", drawableParticles: DrawableParticle[]): void {
+    const options = kind === "fire" ? this.options.fire : this.options.smoke;
+    const sprite = kind === "fire" ? this.fireSprite : this.smokeSprite;
+
+    this.context.globalCompositeOperation = options.composite;
+
+    for (const drawableParticle of drawableParticles) {
+      this.context.globalAlpha = drawableParticle.alpha;
+      this.context.drawImage(
+        sprite,
+        drawableParticle.particle.x - drawableParticle.size / 2,
+        drawableParticle.particle.y - drawableParticle.size / 2,
+        drawableParticle.size,
+        drawableParticle.size
+      );
     }
   }
 
@@ -269,7 +375,7 @@ export class BurnInEffect implements BurnController {
     const fireEndMs = timing.igniteMs + timing.burnMs + timing.fadeMs + timing.emberMs;
     const smokeEndMs = timing.smokeMs;
     const doneAtMs = Math.max(fireEndMs, smokeEndMs);
-    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.context.clearRect(0, 0, this.canvasStyleWidth, this.canvasStyleHeight);
     this.updateReveal(elapsedMs);
 
     let fireForce = 0;
@@ -314,8 +420,12 @@ export class BurnInEffect implements BurnController {
       );
     }
 
-    this.drawParticles("smoke");
-    this.drawParticles("fire");
+    const smokeDrawableParticles = this.updateParticles("smoke");
+    const fireDrawableParticles = this.updateParticles("fire");
+
+    this.ensureParticleBounds([...smokeDrawableParticles, ...fireDrawableParticles]);
+    this.drawParticles("smoke", smokeDrawableParticles);
+    this.drawParticles("fire", fireDrawableParticles);
     this.context.globalAlpha = 1;
     this.context.globalCompositeOperation = "source-over";
 
@@ -327,18 +437,21 @@ export class BurnInEffect implements BurnController {
       return;
     }
 
-    this.animationFrame = requestAnimationFrame((nextTimeStamp) => this.frame(nextTimeStamp));
+    this.animationFrame = this.ownerWindow.requestAnimationFrame((nextTimeStamp) => this.frame(nextTimeStamp));
   }
 
   private finish(keepOpacity: boolean): void {
     this.settled = true;
+    this.ownerWindow.removeEventListener("scroll", this.handleViewportChange);
+    this.ownerWindow.removeEventListener("resize", this.handleViewportChange);
+    this.ownerWindow.visualViewport?.removeEventListener("scroll", this.handleViewportChange);
+    this.ownerWindow.visualViewport?.removeEventListener("resize", this.handleViewportChange);
     this.canvas.remove();
 
     if (!keepOpacity) {
       this.target.style.opacity = this.originalTargetOpacity;
     }
 
-    this.host.style.position = this.originalHostPosition;
     this.resolveDone();
   }
 }
