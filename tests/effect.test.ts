@@ -100,11 +100,22 @@ class FakeImageElement extends FakeElement {}
 
 function installFakeDom() {
   const fakeDocument = new FakeDocument();
+  const animationFrameCallbacks: FrameRequestCallback[] = [];
   const windowAddEventListener = vi.fn();
   const windowCancelAnimationFrame = vi.fn();
   const windowRemoveEventListener = vi.fn();
-  const windowRequestAnimationFrame = vi.fn(() => 0);
-  const windowSetTimeout = vi.fn(() => 0);
+  const windowRequestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+    animationFrameCallbacks.push(callback);
+
+    return animationFrameCallbacks.length;
+  });
+  const windowSetTimeout = vi.fn((callback: TimerHandler) => {
+    if (typeof callback === "function") {
+      callback();
+    }
+
+    return 0;
+  });
   const visualViewportAddEventListener = vi.fn();
   const visualViewportRemoveEventListener = vi.fn();
   const fakeWindow = {
@@ -129,6 +140,15 @@ function installFakeDom() {
   return {
     fakeDocument,
     fakeWindow,
+    runNextAnimationFrame: (timeStamp: number) => {
+      const callback = animationFrameCallbacks.shift();
+
+      if (!callback) {
+        throw new Error("Expected an animation frame callback.");
+      }
+
+      callback(timeStamp);
+    },
     visualViewportAddEventListener,
     visualViewportRemoveEventListener,
     windowAddEventListener,
@@ -199,5 +219,64 @@ describe("BurnInEffect", () => {
     expect(fakeDocument.body.children).toHaveLength(0);
     expect(windowRemoveEventListener).toHaveBeenCalledWith("scroll", scrollListener);
     expect(visualViewportRemoveEventListener).toHaveBeenCalledWith("scroll", scrollListener);
+  });
+
+  it("expands the fixed canvas before large particles hit its edges", () => {
+    const { fakeDocument, runNextAnimationFrame } = installFakeDom();
+    const target = new FakeElement(fakeDocument);
+
+    target.rectangle = createRectangle(50, 60, 100, 80);
+
+    const controller = burn(target as unknown as HTMLElement, {
+      canvas: {
+        pixelRatio: 1
+      },
+      fire: {
+        enabled: false
+      },
+      mask: {
+        padding: {
+          bottom: 0,
+          top: 0,
+          x: 0
+        },
+        source: "bounds",
+        stepPx: 100
+      },
+      seed: "particle-bounds",
+      smoke: {
+        enabled: true,
+        expansion: 0,
+        intensity: 1,
+        lift: 0,
+        maxParticles: 1,
+        particleLife: 20,
+        particlesPerPixel: 0.001,
+        particleSize: 200,
+        spread: 0,
+        turbulence: 0
+      },
+      timing: {
+        delayMs: 0,
+        igniteMs: 1,
+        smokeMs: 1000
+      }
+    });
+
+    const canvas = fakeDocument.body.children[0] as FakeCanvasElement;
+    const initialLeft = Number.parseFloat(canvas.style.left);
+    const initialTop = Number.parseFloat(canvas.style.top);
+    const initialWidth = Number.parseFloat(canvas.style.width);
+    const initialHeight = Number.parseFloat(canvas.style.height);
+
+    runNextAnimationFrame(0);
+    runNextAnimationFrame(10);
+
+    expect(Number.parseFloat(canvas.style.left)).toBeLessThan(initialLeft);
+    expect(Number.parseFloat(canvas.style.top)).toBeLessThan(initialTop);
+    expect(Number.parseFloat(canvas.style.width)).toBeGreaterThan(initialWidth);
+    expect(Number.parseFloat(canvas.style.height)).toBeGreaterThan(initialHeight);
+
+    controller.cancel();
   });
 });

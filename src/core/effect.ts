@@ -17,6 +17,15 @@ type Particle = {
   seed: number;
 };
 
+type DrawableParticle = {
+  alpha: number;
+  particle: Particle;
+  size: number;
+};
+
+const canvasExpansionPadding = 256;
+const canvasExpansionThreshold = 64;
+
 function resolveCanvasRoot(target: HTMLElement, options: ResolvedBurnOptions): HTMLElement {
   if (options.host) {
     return options.host;
@@ -74,8 +83,11 @@ export class BurnInEffect implements BurnController {
   private emitters: BurnEmitter[] = [];
   private coveredPixelCount = 0;
   private animationFrame = 0;
+  private canvasStyleHeight = 0;
+  private canvasStyleWidth = 0;
   private canvasPaddingX = 0;
   private canvasPaddingTop = 0;
+  private pixelRatio = 1;
   private startTime: number | null = null;
   private settled = false;
   private resolveDone!: () => void;
@@ -161,9 +173,9 @@ export class BurnInEffect implements BurnController {
     const paddingX = Math.round(Math.max(source.width * this.options.mask.padding.x, expectedSmoke * 0.48));
     const paddingTop = Math.round(source.height * this.options.mask.padding.top + expectedSmoke * 0.72);
     const paddingBottom = Math.round(Math.max(source.height * this.options.mask.padding.bottom, expectedSmoke * 0.24));
-    const cssWidth = Math.max(1, Math.round(source.width + paddingX * 2));
-    const cssHeight = Math.max(1, Math.round(source.height + paddingTop + paddingBottom));
-    const pixelRatio = resolvePixelRatio(this.options, this.ownerWindow);
+    const styleWidth = Math.max(1, Math.round(source.width + paddingX * 2));
+    const styleHeight = Math.max(1, Math.round(source.height + paddingTop + paddingBottom));
+    this.pixelRatio = resolvePixelRatio(this.options, this.ownerWindow);
 
     this.emitters = source.emitters.map((emitter) => ({
       x: emitter.x + paddingX,
@@ -173,13 +185,8 @@ export class BurnInEffect implements BurnController {
     this.canvasPaddingX = paddingX;
     this.canvasPaddingTop = paddingTop;
     this.coveredPixelCount = Math.max(1, source.emitters.length * this.options.mask.stepPx * this.options.mask.stepPx);
-
-    this.canvas.width = Math.max(1, Math.round(cssWidth * pixelRatio));
-    this.canvas.height = Math.max(1, Math.round(cssHeight * pixelRatio));
-    this.canvas.style.width = `${cssWidth}px`;
-    this.canvas.style.height = `${cssHeight}px`;
+    this.resizeCanvas(styleWidth, styleHeight);
     this.positionCanvas();
-    this.context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   }
 
   private positionCanvas(): void {
@@ -187,6 +194,70 @@ export class BurnInEffect implements BurnController {
 
     this.canvas.style.left = `${Math.round(targetRect.left - this.canvasPaddingX)}px`;
     this.canvas.style.top = `${Math.round(targetRect.top - this.canvasPaddingTop)}px`;
+  }
+
+  private resizeCanvas(styleWidth: number, styleHeight: number): void {
+    this.canvasStyleWidth = Math.max(1, styleWidth);
+    this.canvasStyleHeight = Math.max(1, styleHeight);
+    this.canvas.width = Math.max(1, Math.round(this.canvasStyleWidth * this.pixelRatio));
+    this.canvas.height = Math.max(1, Math.round(this.canvasStyleHeight * this.pixelRatio));
+    this.canvas.style.width = `${this.canvasStyleWidth}px`;
+    this.canvas.style.height = `${this.canvasStyleHeight}px`;
+    this.context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+  }
+
+  private expandCanvas(expandLeft: number, expandTop: number, expandRight: number, expandBottom: number): void {
+    if (expandLeft === 0 && expandTop === 0 && expandRight === 0 && expandBottom === 0) {
+      return;
+    }
+
+    this.canvasPaddingX += expandLeft;
+    this.canvasPaddingTop += expandTop;
+
+    if (expandLeft > 0 || expandTop > 0) {
+      this.emitters = this.emitters.map((emitter) => ({
+        ...emitter,
+        x: emitter.x + expandLeft,
+        y: emitter.y + expandTop
+      }));
+
+      for (const particle of [...this.fireParticles, ...this.smokeParticles]) {
+        particle.x += expandLeft;
+        particle.y += expandTop;
+      }
+    }
+
+    this.resizeCanvas(this.canvasStyleWidth + expandLeft + expandRight, this.canvasStyleHeight + expandTop + expandBottom);
+    this.positionCanvas();
+  }
+
+  private ensureParticleBounds(drawableParticles: DrawableParticle[]): void {
+    if (drawableParticles.length === 0) {
+      return;
+    }
+
+    let minimumX = Number.POSITIVE_INFINITY;
+    let minimumY = Number.POSITIVE_INFINITY;
+    let maximumX = Number.NEGATIVE_INFINITY;
+    let maximumY = Number.NEGATIVE_INFINITY;
+
+    for (const drawableParticle of drawableParticles) {
+      const halfSize = drawableParticle.size / 2;
+
+      minimumX = Math.min(minimumX, drawableParticle.particle.x - halfSize);
+      minimumY = Math.min(minimumY, drawableParticle.particle.y - halfSize);
+      maximumX = Math.max(maximumX, drawableParticle.particle.x + halfSize);
+      maximumY = Math.max(maximumY, drawableParticle.particle.y + halfSize);
+    }
+
+    const expandLeft = minimumX < canvasExpansionThreshold ? Math.ceil(canvasExpansionPadding - minimumX) : 0;
+    const expandTop = minimumY < canvasExpansionThreshold ? Math.ceil(canvasExpansionPadding - minimumY) : 0;
+    const expandRight =
+      maximumX > this.canvasStyleWidth - canvasExpansionThreshold ? Math.ceil(maximumX - this.canvasStyleWidth + canvasExpansionPadding) : 0;
+    const expandBottom =
+      maximumY > this.canvasStyleHeight - canvasExpansionThreshold ? Math.ceil(maximumY - this.canvasStyleHeight + canvasExpansionPadding) : 0;
+
+    this.expandCanvas(expandLeft, expandTop, expandRight, expandBottom);
   }
 
   private spawnParticles(kind: "fire" | "smoke", amount: number, force: number): void {
@@ -221,12 +292,10 @@ export class BurnInEffect implements BurnController {
     }
   }
 
-  private drawParticles(kind: "fire" | "smoke"): void {
+  private updateParticles(kind: "fire" | "smoke"): DrawableParticle[] {
     const options = kind === "fire" ? this.options.fire : this.options.smoke;
     const particles = kind === "fire" ? this.fireParticles : this.smokeParticles;
-    const sprite = kind === "fire" ? this.fireSprite : this.smokeSprite;
-
-    this.context.globalCompositeOperation = options.composite;
+    const drawableParticles: DrawableParticle[] = [];
 
     for (let index = particles.length - 1; index >= 0; index -= 1) {
       const particle = particles[index];
@@ -249,8 +318,31 @@ export class BurnInEffect implements BurnController {
       const alpha = particle.alpha * (kind === "fire" ? 1 - progress : 1 - progress * 0.9);
       const size = particle.size * (kind === "fire" ? 0.62 + options.expansion * (1 - progress) : 1 + progress * options.expansion);
 
-      this.context.globalAlpha = Math.max(0, alpha);
-      this.context.drawImage(sprite, particle.x - size / 2, particle.y - size / 2, size, size);
+      drawableParticles.push({
+        alpha: Math.max(0, alpha),
+        particle,
+        size
+      });
+    }
+
+    return drawableParticles;
+  }
+
+  private drawParticles(kind: "fire" | "smoke", drawableParticles: DrawableParticle[]): void {
+    const options = kind === "fire" ? this.options.fire : this.options.smoke;
+    const sprite = kind === "fire" ? this.fireSprite : this.smokeSprite;
+
+    this.context.globalCompositeOperation = options.composite;
+
+    for (const drawableParticle of drawableParticles) {
+      this.context.globalAlpha = drawableParticle.alpha;
+      this.context.drawImage(
+        sprite,
+        drawableParticle.particle.x - drawableParticle.size / 2,
+        drawableParticle.particle.y - drawableParticle.size / 2,
+        drawableParticle.size,
+        drawableParticle.size
+      );
     }
   }
 
@@ -283,7 +375,7 @@ export class BurnInEffect implements BurnController {
     const fireEndMs = timing.igniteMs + timing.burnMs + timing.fadeMs + timing.emberMs;
     const smokeEndMs = timing.smokeMs;
     const doneAtMs = Math.max(fireEndMs, smokeEndMs);
-    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.context.clearRect(0, 0, this.canvasStyleWidth, this.canvasStyleHeight);
     this.updateReveal(elapsedMs);
 
     let fireForce = 0;
@@ -328,8 +420,12 @@ export class BurnInEffect implements BurnController {
       );
     }
 
-    this.drawParticles("smoke");
-    this.drawParticles("fire");
+    const smokeDrawableParticles = this.updateParticles("smoke");
+    const fireDrawableParticles = this.updateParticles("fire");
+
+    this.ensureParticleBounds([...smokeDrawableParticles, ...fireDrawableParticles]);
+    this.drawParticles("smoke", smokeDrawableParticles);
+    this.drawParticles("fire", fireDrawableParticles);
     this.context.globalAlpha = 1;
     this.context.globalCompositeOperation = "source-over";
 
