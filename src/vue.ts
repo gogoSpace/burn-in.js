@@ -65,10 +65,7 @@ export const BurnIn = defineComponent({
 
       cancel();
       emit("start");
-      const activeController = burn(targetElement, {
-        ...props.options,
-        host: hostElement.value
-      });
+      const activeController = burn(targetElement, props.options);
       controller = activeController;
       activeController.done.then(() => {
         if (controller === activeController) {

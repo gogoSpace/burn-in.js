@@ -17,34 +17,33 @@ type Particle = {
   seed: number;
 };
 
-function ensurePositioned(element: HTMLElement): string {
-  const originalPosition = element.style.position;
-  const computedPosition = getComputedStyle(element).position;
-
-  if (computedPosition === "static") {
-    element.style.position = "relative";
-  }
-
-  return originalPosition;
-}
-
-function resolveHost(target: HTMLElement, options: ResolvedBurnOptions): HTMLElement {
+function resolveCanvasRoot(target: HTMLElement, options: ResolvedBurnOptions): HTMLElement {
   if (options.host) {
     return options.host;
   }
 
-  const parent = target.parentElement;
+  const { body } = target.ownerDocument;
 
-  if (!parent) {
-    throw new Error("Burn-In.js: target element must have a parent host.");
+  if (!body) {
+    throw new Error("Burn-In.js: target element must belong to a document with a body.");
   }
 
-  return parent;
+  return body;
 }
 
-function resolvePixelRatio(options: ResolvedBurnOptions): number {
+function resolveOwnerWindow(target: HTMLElement): Window {
+  const ownerWindow = target.ownerDocument.defaultView;
+
+  if (!ownerWindow) {
+    throw new Error("Burn-In.js: target element must belong to a window.");
+  }
+
+  return ownerWindow;
+}
+
+function resolvePixelRatio(options: ResolvedBurnOptions, ownerWindow: Window): number {
   if (options.canvas.pixelRatio === "device") {
-    return Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    return Math.max(1, Math.min(2, ownerWindow.devicePixelRatio || 1));
   }
 
   return Math.max(1, options.canvas.pixelRatio);
@@ -58,7 +57,8 @@ export class BurnInEffect implements BurnController {
   public readonly done: Promise<void>;
 
   private readonly target: HTMLElement;
-  private readonly host: HTMLElement;
+  private readonly canvasRoot: HTMLElement;
+  private readonly ownerWindow: Window;
   private readonly options: ResolvedBurnOptions;
   private readonly random: BurnRandom;
   private readonly canvas: HTMLCanvasElement;
@@ -66,24 +66,28 @@ export class BurnInEffect implements BurnController {
   private readonly fireSprite: HTMLCanvasElement;
   private readonly smokeSprite: HTMLCanvasElement;
   private readonly originalTargetOpacity: string;
-  private readonly originalHostPosition: string;
+  private readonly handleViewportChange = (): void => {
+    this.positionCanvas();
+  };
   private readonly fireParticles: Particle[] = [];
   private readonly smokeParticles: Particle[] = [];
   private emitters: BurnEmitter[] = [];
   private coveredPixelCount = 0;
   private animationFrame = 0;
+  private canvasPaddingX = 0;
+  private canvasPaddingTop = 0;
   private startTime: number | null = null;
   private settled = false;
   private resolveDone!: () => void;
 
   public constructor(target: HTMLElement, options: BurnOptions = {}) {
     this.target = target;
+    this.ownerWindow = resolveOwnerWindow(target);
     this.options = resolveBurnOptions(options);
-    this.host = resolveHost(target, this.options);
+    this.canvasRoot = resolveCanvasRoot(target, this.options);
     this.random = new BurnRandom(this.options.seed);
     this.originalTargetOpacity = target.style.opacity;
-    this.originalHostPosition = ensurePositioned(this.host);
-    this.canvas = document.createElement("canvas");
+    this.canvas = target.ownerDocument.createElement("canvas");
     this.canvas.className = this.options.canvas.className;
     this.context = this.createContext(this.canvas);
     this.fireSprite = createRadialSprite(this.options.fire.spriteSize, this.options.fire.colors);
@@ -100,14 +104,14 @@ export class BurnInEffect implements BurnController {
     this.layout();
     this.target.style.opacity = String(this.options.reveal.opacityFrom);
 
-    window.setTimeout(() => {
+    this.ownerWindow.setTimeout(() => {
       if (this.settled) {
         return;
       }
 
       this.startTime = null;
       this.options.hooks.onIgnite?.();
-      this.animationFrame = requestAnimationFrame((timeStamp) => this.frame(timeStamp));
+      this.animationFrame = this.ownerWindow.requestAnimationFrame((timeStamp) => this.frame(timeStamp));
     }, this.options.timing.delayMs);
 
     return this;
@@ -118,7 +122,7 @@ export class BurnInEffect implements BurnController {
       return;
     }
 
-    cancelAnimationFrame(this.animationFrame);
+    this.ownerWindow.cancelAnimationFrame(this.animationFrame);
     this.options.hooks.onCancel?.();
     this.finish(false);
   }
@@ -135,19 +139,21 @@ export class BurnInEffect implements BurnController {
 
   private mountCanvas(): void {
     Object.assign(this.canvas.style, {
-      position: "absolute",
+      position: "fixed",
       left: "0",
       top: "0",
       pointerEvents: this.options.canvas.pointerEvents,
       zIndex: String(this.options.canvas.zIndex)
     });
 
-    this.host.appendChild(this.canvas);
+    this.canvasRoot.appendChild(this.canvas);
+    this.ownerWindow.addEventListener("scroll", this.handleViewportChange, { passive: true });
+    this.ownerWindow.addEventListener("resize", this.handleViewportChange);
+    this.ownerWindow.visualViewport?.addEventListener("scroll", this.handleViewportChange, { passive: true });
+    this.ownerWindow.visualViewport?.addEventListener("resize", this.handleViewportChange);
   }
 
   private layout(): void {
-    const hostRect = this.host.getBoundingClientRect();
-    const targetRect = this.target.getBoundingClientRect();
     const source = buildBurnSource(this.target, this.options.mask);
     const expectedSmoke = this.options.smoke.enabled
       ? this.options.smoke.spriteSize * (1 + this.options.smoke.expansion) * Math.max(0.2, this.options.smoke.intensity)
@@ -157,22 +163,30 @@ export class BurnInEffect implements BurnController {
     const paddingBottom = Math.round(Math.max(source.height * this.options.mask.padding.bottom, expectedSmoke * 0.24));
     const cssWidth = Math.max(1, Math.round(source.width + paddingX * 2));
     const cssHeight = Math.max(1, Math.round(source.height + paddingTop + paddingBottom));
-    const pixelRatio = resolvePixelRatio(this.options);
+    const pixelRatio = resolvePixelRatio(this.options, this.ownerWindow);
 
     this.emitters = source.emitters.map((emitter) => ({
       x: emitter.x + paddingX,
       y: emitter.y + paddingTop,
       weight: emitter.weight
     }));
+    this.canvasPaddingX = paddingX;
+    this.canvasPaddingTop = paddingTop;
     this.coveredPixelCount = Math.max(1, source.emitters.length * this.options.mask.stepPx * this.options.mask.stepPx);
 
     this.canvas.width = Math.max(1, Math.round(cssWidth * pixelRatio));
     this.canvas.height = Math.max(1, Math.round(cssHeight * pixelRatio));
     this.canvas.style.width = `${cssWidth}px`;
     this.canvas.style.height = `${cssHeight}px`;
-    this.canvas.style.left = `${Math.round(targetRect.left - hostRect.left - paddingX)}px`;
-    this.canvas.style.top = `${Math.round(targetRect.top - hostRect.top - paddingTop)}px`;
+    this.positionCanvas();
     this.context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  }
+
+  private positionCanvas(): void {
+    const targetRect = this.target.getBoundingClientRect();
+
+    this.canvas.style.left = `${Math.round(targetRect.left - this.canvasPaddingX)}px`;
+    this.canvas.style.top = `${Math.round(targetRect.top - this.canvasPaddingTop)}px`;
   }
 
   private spawnParticles(kind: "fire" | "smoke", amount: number, force: number): void {
@@ -327,18 +341,21 @@ export class BurnInEffect implements BurnController {
       return;
     }
 
-    this.animationFrame = requestAnimationFrame((nextTimeStamp) => this.frame(nextTimeStamp));
+    this.animationFrame = this.ownerWindow.requestAnimationFrame((nextTimeStamp) => this.frame(nextTimeStamp));
   }
 
   private finish(keepOpacity: boolean): void {
     this.settled = true;
+    this.ownerWindow.removeEventListener("scroll", this.handleViewportChange);
+    this.ownerWindow.removeEventListener("resize", this.handleViewportChange);
+    this.ownerWindow.visualViewport?.removeEventListener("scroll", this.handleViewportChange);
+    this.ownerWindow.visualViewport?.removeEventListener("resize", this.handleViewportChange);
     this.canvas.remove();
 
     if (!keepOpacity) {
       this.target.style.opacity = this.originalTargetOpacity;
     }
 
-    this.host.style.position = this.originalHostPosition;
     this.resolveDone();
   }
 }
