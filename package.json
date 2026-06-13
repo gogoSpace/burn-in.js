@@ -1,11 +1,11 @@
 {
   "name": "@gogospace/burn-in",
   "version": "0.1.2",
-  "description": "Configurable fire and smoke burn-in effects for DOM elements, images, canvas, and Vue.",
+  "description": "Canvas fire-and-smoke reveal effects for real DOM text, images, canvas, and Vue components.",
   "type": "module",
   "license": "MIT",
   "author": "Jiří Gogo Bílek",
-  "homepage": "https://github.com/gogoSpace/burn-in.js#readme",
+  "homepage": "https://burn-in.gogospace.cz/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gogoSpace/burn-in.js.git"
@@ -20,7 +20,19 @@
     "smoke",
     "canvas",
     "animation",
-    "vue"
+    "web-animation",
+    "visual-effects",
+    "reveal",
+    "reveal-animation",
+    "fire-effect",
+    "smoke-effect",
+    "particle-effect",
+    "text-animation",
+    "image-effect",
+    "dom",
+    "vue",
+    "vue3",
+    "typescript"
   ],
   "sideEffects": false,
   "files": [

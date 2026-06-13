@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { BurnIn } from "../../src/vue";
 import type { BurnOptions, BurnPresetName } from "../../src";
 
@@ -11,6 +11,24 @@ type DemoPreset = {
   burnDurationMs: number;
   smokeDurationMs: number;
 };
+
+type FeatureCard = {
+  title: string;
+  description: string;
+};
+
+type ExampleCard = {
+  title: string;
+  description: string;
+};
+
+type CopyStatus = "idle" | "copied" | "failed";
+
+const githubLink = "https://github.com/gogoSpace/burn-in.js";
+const npmPackageLink = "https://www.npmjs.com/package/@gogospace/burn-in";
+const installCommand = "npm install @gogospace/burn-in";
+const initialDelayMs = 840;
+const replayDelayMs = 420;
 
 const presets: DemoPreset[] = [
   {
@@ -63,17 +81,49 @@ const presets: DemoPreset[] = [
   },
 ];
 
+const featureCards: FeatureCard[] = [
+  {
+    title: "Real DOM targets",
+    description: "Reveal headings, inline text, images, canvas elements, and Vue slots without replacing the final content.",
+  },
+  {
+    title: "Mask-driven particles",
+    description: "Use text, alpha, luminance, or bounds masks so fire and smoke follow the visible shape.",
+  },
+  {
+    title: "Deterministic replays",
+    description: "Set a seed for repeatable captures, demos, tests, and social launch videos.",
+  },
+];
+
+const exampleCards: ExampleCard[] = [
+  {
+    title: "Launch pages",
+    description: "Burn in a logo, wordmark, or product heading when a campaign needs one memorable moment.",
+  },
+  {
+    title: "Game and event screens",
+    description: "Use theatrical fire, smoke, and timing presets for title cards, posters, and reveal moments.",
+  },
+  {
+    title: "Vue demos",
+    description: "Wrap real component output, replay effects with a key, and target a descendant inside the slot.",
+  },
+];
+
 const selectedPreset = ref<BurnPresetName>("soft");
 const replayKey = ref(0);
-const initialDelayMs = 840;
-const replayDelayMs = 420;
 const burnDelayMs = ref(initialDelayMs);
-const isActive = ref(true);
+const isActive = ref(false);
 const fireIntensity = ref(0.5);
 const smokeIntensity = ref(0.33);
 const smokeDurationMs = ref(3000);
 const burnDurationMs = ref(1000);
 const seed = ref("gogospace");
+const prefersReducedMotion = ref(false);
+const copyStatus = ref<CopyStatus>("idle");
+let reducedMotionMediaQuery: MediaQueryList | null = null;
+let copyStatusTimer: number | undefined;
 
 const burnOptions = computed<BurnOptions>(() => ({
   preset: selectedPreset.value,
@@ -129,26 +179,107 @@ function selectPreset(preset: BurnPresetName): void {
 
   replay();
 }
+
+function applyReducedMotionPreference(isReducedMotion: boolean): void {
+  prefersReducedMotion.value = isReducedMotion;
+
+  if (isReducedMotion) {
+    isActive.value = false;
+    return;
+  }
+
+  if (replayKey.value === 0) {
+    isActive.value = true;
+  }
+}
+
+function handleReducedMotionChange(event: MediaQueryListEvent): void {
+  applyReducedMotionPreference(event.matches);
+}
+
+function copyTextWithFallback(text: string): boolean {
+  const textAreaElement = document.createElement("textarea");
+  textAreaElement.value = text;
+  textAreaElement.setAttribute("readonly", "");
+  textAreaElement.style.position = "fixed";
+  textAreaElement.style.top = "0";
+  textAreaElement.style.left = "-9999px";
+  document.body.appendChild(textAreaElement);
+  textAreaElement.select();
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textAreaElement);
+  }
+}
+
+async function copyInstallCommand(): Promise<void> {
+  if (copyStatusTimer) {
+    window.clearTimeout(copyStatusTimer);
+  }
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(installCommand);
+    } else if (!copyTextWithFallback(installCommand)) {
+      throw new Error("Copy command was not accepted.");
+    }
+
+    copyStatus.value = "copied";
+  } catch {
+    copyStatus.value = "failed";
+  }
+
+  copyStatusTimer = window.setTimeout(() => {
+    copyStatus.value = "idle";
+  }, 2200);
+}
+
+onMounted(() => {
+  reducedMotionMediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  applyReducedMotionPreference(reducedMotionMediaQuery.matches);
+  reducedMotionMediaQuery.addEventListener("change", handleReducedMotionChange);
+});
+
+onBeforeUnmount(() => {
+  reducedMotionMediaQuery?.removeEventListener("change", handleReducedMotionChange);
+
+  if (copyStatusTimer) {
+    window.clearTimeout(copyStatusTimer);
+  }
+});
 </script>
 
 <template>
   <main class="demo-shell">
-    <section class="hero">
+    <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="brand">Burn-In.js</p>
-        <h1>Burn any web element into view.</h1>
+        <p class="brand">TypeScript canvas effect</p>
+        <h1 id="hero-title">Burn-In.js</h1>
         <p class="lead">
-          A small canvas engine for configurable fire, smoke, timing, masks, and Vue
-          wrappers.
+          Canvas fire and smoke reveal effects for DOM elements, text, images,
+          canvas, and Vue components.
         </p>
-        <div class="actions">
-          <button class="primary-action" type="button" @click="replay">
-            Replay burn
+
+        <div class="install-card" aria-label="Install Burn-In.js">
+          <code>{{ installCommand }}</code>
+          <button class="copy-action" type="button" @click="copyInstallCommand">
+            {{ copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy" }}
           </button>
-          <a class="secondary-action" href="https://github.com/gogoSpace/burn-in.js"
-            >GitHub</a
-          >
         </div>
+
+        <div class="actions">
+          <a class="primary-action" :href="npmPackageLink">npm package</a>
+          <a class="secondary-action" :href="githubLink">GitHub</a>
+          <button class="tertiary-action" type="button" @click="replay">
+            Replay effect
+          </button>
+        </div>
+
+        <p v-if="prefersReducedMotion" class="motion-note">
+          Motion is paused by your system preference. Use replay to preview it once.
+        </p>
       </div>
 
       <div class="stage" aria-label="Burn-In.js live preview">
@@ -171,14 +302,20 @@ function selectPreset(preset: BurnPresetName): void {
       </div>
     </section>
 
-    <section class="control-surface" aria-label="Burn-In.js controls">
-      <div class="preset-row">
+    <section class="control-surface" aria-labelledby="controls-title">
+      <div class="section-heading">
+        <p class="section-kicker">Playground</p>
+        <h2 id="controls-title">Tune the burn in real time.</h2>
+      </div>
+
+      <div class="preset-row" role="group" aria-label="Burn preset">
         <button
           v-for="preset in presets"
           :key="preset.value"
           class="preset-button"
           :class="{ selected: selectedPreset === preset.value }"
           type="button"
+          :aria-pressed="selectedPreset === preset.value"
           @click="selectPreset(preset.value)"
         >
           {{ preset.label }}
@@ -234,6 +371,53 @@ function selectPreset(preset: BurnPresetName): void {
           <span>Seed</span>
           <input v-model="seed" type="text" @change="replay" />
         </label>
+      </div>
+    </section>
+
+    <section class="feature-surface" aria-labelledby="features-title">
+      <div class="section-heading">
+        <p class="section-kicker">Why it is useful</p>
+        <h2 id="features-title">Focused reveal effects without a broad animation stack.</h2>
+      </div>
+
+      <div class="feature-grid">
+        <article v-for="featureCard in featureCards" :key="featureCard.title" class="feature-card">
+          <h3>{{ featureCard.title }}</h3>
+          <p>{{ featureCard.description }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="code-surface" aria-labelledby="code-title">
+      <div class="section-heading">
+        <p class="section-kicker">Drop-in API</p>
+        <h2 id="code-title">Start with one call, then tune masks and particles.</h2>
+      </div>
+
+      <pre class="code-block"><code>import { burn } from "@gogospace/burn-in";
+
+const titleElement = document.querySelector(".title");
+
+if (titleElement instanceof HTMLElement) {
+  burn(titleElement, {
+    preset: "ritual",
+    seed: "launch",
+    mask: { source: "text" }
+  });
+}</code></pre>
+    </section>
+
+    <section class="example-surface" aria-labelledby="examples-title">
+      <div class="section-heading">
+        <p class="section-kicker">Use cases</p>
+        <h2 id="examples-title">Built for theatrical moments in real interfaces.</h2>
+      </div>
+
+      <div class="example-grid">
+        <article v-for="exampleCard in exampleCards" :key="exampleCard.title" class="example-card">
+          <h3>{{ exampleCard.title }}</h3>
+          <p>{{ exampleCard.description }}</p>
+        </article>
       </div>
     </section>
   </main>

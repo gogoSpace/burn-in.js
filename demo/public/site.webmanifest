@@ -1,0 +1,21 @@
+{
+  "name": "Burn-In.js",
+  "short_name": "Burn-In.js",
+  "description": "Canvas fire-and-smoke reveal effects for real DOM text, images, canvas, and Vue components.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#100e0c",
+  "theme_color": "#100e0c",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
