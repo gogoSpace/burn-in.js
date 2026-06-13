@@ -9,7 +9,7 @@ Canvas fire-and-smoke reveal effects for real DOM text, images, canvas, and Vue 
 
 [Live playground](https://burn-in.gogospace.cz/) · [npm](https://www.npmjs.com/package/@gogospace/burn-in) · [GitHub](https://github.com/gogoSpace/burn-in.js)
 
-![Burn-In.js preview](https://raw.githubusercontent.com/gogoSpace/burn-in.js/main/demo/public/og-image.png)
+![Burn-In.js animated preview](https://raw.githubusercontent.com/gogoSpace/burn-in.js/main/demo/public/burn-in-animated-hero.gif)
 
 Burn-In.js adds a dramatic fire-and-smoke reveal to real web content. Point it at a DOM element, image, canvas, or Vue slot, then choose a preset or tune the masks, particles, timing, and seed. The original content stays in the document after the reveal, so text can remain selectable and accessible.
 
