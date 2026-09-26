@@ -153,6 +153,31 @@ burn(headingElement, {
 
 `seed` controls the random particle pattern. Use a stable string or number when you want the same element and options to replay with the same fire and smoke behavior. Omit it when every burn should feel slightly different.
 
+### Custom Lift Curves
+
+Both `fire` and `smoke` accept `liftCurve?: (particleProgress: number) => number` in their shared `BurnParticleOptions`. Use any synchronous function to control how lift changes over each particle's lifetime:
+
+```ts
+burn(headingElement, {
+  fire: {
+    lift: 0.1,
+    liftCurve: (particleProgress) => 0.2 + 1.8 * particleProgress ** 2
+  },
+  smoke: {
+    lift: 0.05,
+    liftCurve: (particleProgress) => 1 - particleProgress
+  }
+});
+```
+
+`particleProgress` is the normalized age of that individual particle: `0` at birth and `1` at expiry, independent of the overall animation timing. The callback runs once per live particle per animation frame. Expired particles are removed before it runs, so callbacks receive values in `[0, 1)` and are not called at `1`.
+
+The returned number multiplies the configured `lift` for that step, before the existing velocity damping. Without a curve, the multiplier remains exactly `1 + particleProgress * 0.5`. A custom curve **replaces** that multiplier. For example, `() => 2` applies twice the base lift throughout the particle's life; it does not also apply the default ramp.
+
+Zero disables lift acceleration for that step, while a negative multiplier reverses it. Neither resets the particle's existing velocity. `NaN`, positive or negative `Infinity`, non-number results from JavaScript callers, and thrown errors fall back to the default multiplier for that step. The callback is tried again on the next step, and the effect can still complete or be cancelled.
+
+Keep curves fast and free of side effects: they run for every live particle, potentially thousands of times per frame. Seeded replays stay deterministic when the curve itself is deterministic. Particle counts, palettes, lifetimes, initial velocities, and rendering are unchanged.
+
 ## Presets
 
 | Preset | Best for |
@@ -217,8 +242,8 @@ Supported mask sources:
 | Group | Controls |
 | --- | --- |
 | `timing` | Delay, ignition, burn, fade, ember, smoke, and easing durations. |
-| `fire` | Fire particle density, colors, lift, spread, turbulence, size, lifetime, and blending. |
-| `smoke` | Smoke particle density, colors, drift, expansion, size, lifetime, and blending. |
+| `fire` | Fire particle density, colors, lift and lift curve, spread, turbulence, size, lifetime, and blending. |
+| `smoke` | Smoke particle density, colors, lift and lift curve, drift, expansion, size, lifetime, and blending. |
 | `mask` | Source, thresholds, sampling step, padding, offset, and edge bias. |
 | `reveal` | Target opacity, reveal phase, duration, and easing. |
 | `canvas` | Overlay class, z-index, pixel ratio, and pointer events. |

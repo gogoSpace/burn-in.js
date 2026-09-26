@@ -29,6 +29,25 @@ describe("resolveBurnOptions", () => {
     expect(options.fire.colors.length).toBeGreaterThan(0);
     expect(options.smoke.colors.length).toBeGreaterThan(0);
     expect(options.mask.padding.top).toBeGreaterThan(0);
+    expect(options.fire.liftCurve).toBeUndefined();
+    expect(options.smoke.liftCurve).toBeUndefined();
+  });
+
+  it("preserves independent fire and smoke lift callbacks through preset resolution", () => {
+    const fireLiftCurve = (particleProgress: number) => 0.2 + 1.8 * particleProgress ** 2;
+    const smokeLiftCurve = (particleProgress: number) => 1 - particleProgress;
+    const options = resolveBurnOptions({
+      preset: "wildfire",
+      fire: { lift: 0.1, liftCurve: fireLiftCurve },
+      smoke: { liftCurve: smokeLiftCurve }
+    });
+
+    expect(options.fire.liftCurve).toBe(fireLiftCurve);
+    expect(options.smoke.liftCurve).toBe(smokeLiftCurve);
+    expect(options.fire.lift).toBe(0.1);
+    expect(options.smoke.lift).toBe(0.05);
+    expect(resolveBurnOptions().fire.liftCurve).toBeUndefined();
+    expect(resolveBurnOptions().smoke.liftCurve).toBeUndefined();
   });
 
   it("accepts text as a mask source", () => {

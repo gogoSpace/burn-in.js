@@ -299,24 +299,38 @@ export class BurnInEffect implements BurnController {
 
     for (let index = particles.length - 1; index >= 0; index -= 1) {
       const particle = particles[index];
-      const progress = particle.life / particle.maxLife;
+      const particleProgress = particle.life / particle.maxLife;
 
-      if (progress >= 1) {
+      if (particleProgress >= 1) {
         particles.splice(index, 1);
         continue;
+      }
+
+      let liftMultiplier = 1 + particleProgress * 0.5;
+
+      if (options.liftCurve) {
+        try {
+          const customLiftMultiplier = options.liftCurve(particleProgress);
+
+          if (Number.isFinite(customLiftMultiplier)) {
+            liftMultiplier = customLiftMultiplier;
+          }
+        } catch {
+          // A faulty curve falls back for this step so the effect can still finish.
+        }
       }
 
       particle.velocityX +=
         Math.sin(particle.seed + particle.life * 0.055) * options.turbulence +
         this.random.signed(options.turbulence);
-      particle.velocityY -= options.lift * (1 + progress * 0.5);
+      particle.velocityY -= options.lift * liftMultiplier;
       particle.velocityY *= kind === "fire" ? 0.986 : 0.992;
       particle.x += particle.velocityX;
       particle.y += particle.velocityY;
       particle.life += 1;
 
-      const alpha = particle.alpha * (kind === "fire" ? 1 - progress : 1 - progress * 0.9);
-      const size = particle.size * (kind === "fire" ? 0.62 + options.expansion * (1 - progress) : 1 + progress * options.expansion);
+      const alpha = particle.alpha * (kind === "fire" ? 1 - particleProgress : 1 - particleProgress * 0.9);
+      const size = particle.size * (kind === "fire" ? 0.62 + options.expansion * (1 - particleProgress) : 1 + particleProgress * options.expansion);
 
       drawableParticles.push({
         alpha: Math.max(0, alpha),

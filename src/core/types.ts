@@ -33,6 +33,13 @@ export type BurnParticleOptions = {
   colors?: BurnColorStop[];
   spriteSize?: number;
   lift?: number;
+  /**
+   * Multiplies lift using the particle's normalized age (0 at birth, 1 at expiry).
+   * Replaces the default 1 + particleProgress * 0.5. Called once per live particle
+   * per frame, before expiry. Non-finite/non-number results or thrown errors use
+   * the default multiplier for that step. Zero and negative values are allowed.
+   */
+  liftCurve?: (particleProgress: number) => number;
   spread?: number;
   drift?: number;
   turbulence?: number;
@@ -102,7 +109,8 @@ export type ResolvedBurnTimingOptions = Required<Omit<BurnTimingOptions, "easing
   easing: Required<NonNullable<BurnTimingOptions["easing"]>>;
 };
 
-export type ResolvedBurnParticleOptions = Required<BurnParticleOptions>;
+export type ResolvedBurnParticleOptions = Required<Omit<BurnParticleOptions, "liftCurve">> &
+  Pick<BurnParticleOptions, "liftCurve">;
 
 export type ResolvedBurnMaskOptions = Required<Omit<BurnMaskOptions, "padding" | "offset">> & {
   padding: Required<NonNullable<BurnMaskOptions["padding"]>>;
