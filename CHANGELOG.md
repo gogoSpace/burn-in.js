@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-09-26
+
 - Add optional `fire.liftCurve` and `smoke.liftCurve` callbacks to multiply base lift by each particle's normalized age, for example `fire: { lift: 0.1, liftCurve: (particleProgress) => 0.2 + 1.8 * particleProgress ** 2 }`.
 - Preserve the original `1 + particleProgress * 0.5` lift multiplier when no curve is provided. Custom curves replace it; non-number/non-finite results and thrown errors fall back to it for that step.
 
