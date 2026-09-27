@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-27
+
 - Add optional `referenceSize` for uniform particle geometry relative to the target's shorter side, across text, image, canvas, and bounds masks. Existing calls retain pixel-based sizing.
 - Normalize mask sampling and emission at the reference size, preserving particle counts and lifetimes during uniform resizing without changing particle budgets, palettes, or lift-curve timing.
 - Rebuild masks on target resize and scale active particle geometry, offsets, and canvas margins independently of backing-store pixel ratio.

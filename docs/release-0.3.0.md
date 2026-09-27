@@ -67,5 +67,12 @@ when adapting the patch. No consumer files or production deployment were changed
 
 ## Status
 
-Feature and release PRs, merged release commit, archive integrity, registry, tag,
-and release links will be recorded after their corresponding gates pass.
+[Feature PR #4](https://github.com/gogoSpace/burn-in.js/pull/4) passed review and
+[CI](https://github.com/gogoSpace/burn-in.js/actions/runs/36305003207), then merged
+as `11c1b0f32a2ccf542260f6253e456c814edb12b7`. The separate release branch updates
+both manifests to `0.3.0` and dates the changelog. Registry `latest` was rechecked
+at `0.2.0` before that bump; npm authentication is valid.
+
+Next gate: release PR review/CI and merge, followed by the exact-commit gate above.
+Final release commit, archive integrity, registry verification, and tag links are
+to be recorded on the release PR and the published GitHub release once verified.

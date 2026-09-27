@@ -111,3 +111,11 @@ backing-store compensation, fractional positioning, and package boundaries.
 No blocking finding remains. Text-mask precision and the consumer's separate
 pixelRatio patch are documented limitations. Next: feature PR and CI, followed
 by a separate `0.3.0` release PR and exact-commit release validation.
+
+## Feature merged — 2026-09-27
+
+[Feature PR #4](https://github.com/gogoSpace/burn-in.js/pull/4) passed author
+self-review and [CI](https://github.com/gogoSpace/burn-in.js/actions/runs/36305003207).
+Merged as `11c1b0f32a2ccf542260f6253e456c814edb12b7`. The version-only release
+phase is now in progress on `release/0.3.0`; publication remains gated on its
+merged commit and the checks in [the release notes](./release-0.3.0.md).
