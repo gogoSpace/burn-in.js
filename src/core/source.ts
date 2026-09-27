@@ -61,24 +61,29 @@ function pixelLuminance(red: number, green: number, blue: number): number {
   return red * 0.2126 + green * 0.7152 + blue * 0.0722;
 }
 
-function buildCanvasFont(style: CSSStyleDeclaration): string {
-  if (style.font) {
+function buildCanvasFont(style: CSSStyleDeclaration, scale: number): string {
+  if (scale === 1 && style.font) {
     return style.font;
   }
 
   const lineHeight = style.lineHeight && style.lineHeight !== "normal" ? `/${style.lineHeight}` : "";
+  const fontSize = scale === 1 ? `${style.fontSize}${lineHeight}` : `${Number.parseFloat(style.fontSize) / scale}px`;
 
-  return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize}${lineHeight} ${style.fontFamily}`;
+  return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${fontSize} ${style.fontFamily}`;
 }
 
-function applyCanvasTextSpacing(context: CanvasRenderingContext2D, style: CSSStyleDeclaration): void {
+function scaleTextSpacing(spacing: string, scale: number): string {
+  return scale !== 1 && spacing.endsWith("px") ? `${Number.parseFloat(spacing) / scale}px` : spacing;
+}
+
+function applyCanvasTextSpacing(context: CanvasRenderingContext2D, style: CSSStyleDeclaration, scale: number): void {
   const spacedContext = context as unknown as Record<string, string>;
 
   spacedContext.fontKerning = style.fontKerning;
   spacedContext.fontStretch = style.fontStretch.endsWith("%") ? "normal" : style.fontStretch;
   spacedContext.fontVariantCaps = style.fontVariantCaps;
-  spacedContext.letterSpacing = style.letterSpacing;
-  spacedContext.wordSpacing = style.wordSpacing;
+  spacedContext.letterSpacing = scaleTextSpacing(style.letterSpacing, scale);
+  spacedContext.wordSpacing = scaleTextSpacing(style.wordSpacing, scale);
 }
 
 function applyTextTransform(text: string, style: CSSStyleDeclaration): string {
@@ -318,27 +323,27 @@ function collectTextLines(textNode: Text, targetRect: DOMRect): TextLine[] {
   return textLines;
 }
 
-function resolveTextBaselineY(context: CanvasRenderingContext2D, textLine: TextLine): number {
+function resolveTextBaselineY(context: CanvasRenderingContext2D, textLine: TextLine, scale: number): number {
   const metrics = context.measureText(textLine.text);
-  const fontSize = Number.parseFloat(textLine.style.fontSize) || textLine.height;
+  const fontSize = (Number.parseFloat(textLine.style.fontSize) || textLine.height) / scale;
   const ascent = metrics.actualBoundingBoxAscent || metrics.fontBoundingBoxAscent || fontSize * 0.8;
   const descent = metrics.actualBoundingBoxDescent || metrics.fontBoundingBoxDescent || fontSize * 0.2;
   const textHeight = ascent + descent;
-  const leading = Math.max(0, textLine.height - textHeight);
+  const leading = Math.max(0, textLine.height / scale - textHeight);
 
-  return textLine.y + leading / 2 + ascent;
+  return textLine.y / scale + leading / 2 + ascent;
 }
 
-function drawTextLines(context: CanvasRenderingContext2D, textLines: TextLine[]): void {
+function drawTextLines(context: CanvasRenderingContext2D, textLines: TextLine[], scale: number): void {
   context.fillStyle = "rgb(0, 0, 0)";
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
 
   for (const textLine of textLines) {
-    context.font = buildCanvasFont(textLine.style);
+    context.font = buildCanvasFont(textLine.style, scale);
     context.direction = textLine.style.direction as CanvasDirection;
-    applyCanvasTextSpacing(context, textLine.style);
-    context.fillText(textLine.text, textLine.x, resolveTextBaselineY(context, textLine));
+    applyCanvasTextSpacing(context, textLine.style, scale);
+    context.fillText(textLine.text, textLine.x / scale, resolveTextBaselineY(context, textLine, scale));
   }
 }
 
@@ -346,7 +351,8 @@ function buildTextSource(
   target: HTMLElement,
   displayWidth: number,
   displayHeight: number,
-  maskOptions: ResolvedBurnMaskOptions
+  maskOptions: ResolvedBurnMaskOptions,
+  scale: number
 ): BurnSource | null {
   const textLines = collectTextNodes(target).flatMap((textNode) => collectTextLines(textNode, target.getBoundingClientRect()));
 
@@ -363,22 +369,24 @@ function buildTextSource(
     return null;
   }
 
-  drawTextLines(context, textLines);
+  // Normalize font metrics before rasterization as well as DOM coordinates.
+  // Scaling a CSS-sized text bitmap would change its edge samples and emission.
+  drawTextLines(context, textLines, scale);
 
   return buildImageDataSource(context.getImageData(0, 0, displayWidth, displayHeight), displayWidth, displayHeight, maskOptions, false);
 }
 
-export function buildBurnSource(target: HTMLElement, maskOptions: ResolvedBurnMaskOptions): BurnSource {
+export function buildBurnSource(target: HTMLElement, maskOptions: ResolvedBurnMaskOptions, scale = 1): BurnSource {
   const rect = target.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width));
-  const height = Math.max(1, Math.round(rect.height));
+  const width = Number.isFinite(rect.width) ? Math.max(1, Math.round(rect.width / scale)) : 1;
+  const height = Number.isFinite(rect.height) ? Math.max(1, Math.round(rect.height / scale)) : 1;
   const stepPx = Math.max(1, Math.round(maskOptions.stepPx));
   const canSamplePixels = isImageElement(target) || isCanvasElement(target);
   const shouldSamplePixels =
     canSamplePixels && (maskOptions.source === "auto" || maskOptions.source === "alpha" || maskOptions.source === "luminance");
 
   if (maskOptions.source === "text") {
-    const textSource = buildTextSource(target, width, height, maskOptions);
+    const textSource = buildTextSource(target, width, height, maskOptions, scale);
 
     if (textSource && textSource.emitters.length > 0) {
       return applyMaskOffset(textSource, maskOptions);

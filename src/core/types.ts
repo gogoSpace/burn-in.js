@@ -95,6 +95,12 @@ export type BurnHookOptions = {
 export type BurnOptions = {
   preset?: BurnPresetName;
   seed?: string | number;
+  /**
+   * Shorter target side in CSS pixels at which spatial options have scale 1.
+   * Enables uniform target-relative geometry and normalized emission. Omit for
+   * legacy pixel sizing. Non-finite/non-positive values also use legacy sizing.
+   */
+  referenceSize?: number;
   host?: HTMLElement | null;
   timing?: BurnTimingOptions;
   fire?: BurnParticleOptions;
@@ -124,6 +130,7 @@ export type ResolvedBurnCanvasOptions = Required<BurnCanvasOptions>;
 export type ResolvedBurnOptions = {
   preset: BurnPresetName;
   seed: string | number | undefined;
+  referenceSize?: number;
   host: HTMLElement | null;
   timing: ResolvedBurnTimingOptions;
   fire: ResolvedBurnParticleOptions;

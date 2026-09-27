@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add optional `referenceSize` for uniform particle geometry relative to the target's shorter side, across text, image, canvas, and bounds masks. Existing calls retain pixel-based sizing.
+- Normalize mask sampling and emission at the reference size, preserving particle counts and lifetimes during uniform resizing without changing particle budgets, palettes, or lift-curve timing.
+- Rebuild masks on target resize and scale active particle geometry, offsets, and canvas margins independently of backing-store pixel ratio.
+
 ## 0.2.0 — 2026-09-26
 
 - Add optional `fire.liftCurve` and `smoke.liftCurve` callbacks to multiply base lift by each particle's normalized age, for example `fire: { lift: 0.1, liftCurve: (particleProgress) => 0.2 + 1.8 * particleProgress ** 2 }`.
