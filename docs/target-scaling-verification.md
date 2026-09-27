@@ -1,5 +1,23 @@
 # Target-relative scaling contract and verification
 
+## Scale basis follow-up — 2026-09-27
+
+The unpublished 0.3.0 release now also accepts a selected scale basis: shorter
+side (default), width, height, font size, or a synchronous target callback.
+Reference size uses the selected basis in CSS pixels. Geometry remains generic
+for every supported target. Wrapping a text target without changing font size
+must not change particle sizes or motion when font-size is selected. Changes
+to font size or callback output must update live geometry even when the target
+rectangle stays unchanged. Invalid results and callback errors fall back to
+legacy scale 1; omitted reference size must not evaluate the basis.
+
+Continue in the existing checkout on feat/scale-basis from current origin/main.
+Add deterministic renderer tests and a native canvas regression for wrapping,
+font changes, callback evaluation, both particle kinds, and existing defaults.
+Use a new reviewed PR and passing CI before updating the pending 0.3.0 archive.
+No new version bump is needed while registry latest remains 0.2.0. The prior
+2FA publication was cancelled. Never publish that superseded archive.
+
 ## Contract — 2026-09-27
 
 Implement one opt-in `referenceSize?: number` option, in CSS pixels, shared by all
@@ -119,3 +137,22 @@ self-review and [CI](https://github.com/gogoSpace/burn-in.js/actions/runs/363050
 Merged as `11c1b0f32a2ccf542260f6253e456c814edb12b7`. The version-only release
 phase is now in progress on `release/0.3.0`; publication remains gated on its
 merged commit and the checks in [the release notes](./release-0.3.0.md).
+
+## Scale-basis acceptance — 2026-09-27
+
+- 145 deterministic tests pass, including every previous test and unchanged
+  legacy snapshots. Both particle kinds cover all five scale bases, all four
+  target kinds, wrapping geometry, live font/callback changes with fixed target
+  bounds, invalid measurements, unknown bases, exceptions, and omitted references.
+- Typecheck, core/Vue/declaration build, demo build, package dry run, and diff
+  whitespace checks pass. No dependency or manifest changes.
+- 71 native Chrome 153.0.8010.53 scenarios pass, with no page errors. The 20 new
+  cases cover font-size and callback bases at 0.5/1/2 scale, actual one/two-line
+  text measured with DOM ranges, wrapping during playback, and increasing or
+  decreasing font size inside fixed bounds. Rendered sizes, normalized motion
+  from birth, fade/lifetime, completion, and capped counts match. Maximum error
+  remains 0.00002568 reference pixels. No screenshots were taken.
+- Self-review checked owner-window font measurement, one callback evaluation per
+  layout check, error isolation, refresh detection beyond bounding-box changes,
+  reference-space mask and particle geometry, package exports, and documentation.
+  The prepared 0.3.0 remains unpublished; next gate is this follow-up PR and CI.

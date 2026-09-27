@@ -88,12 +88,20 @@ try {
       return target;
     }
 
-    async function record(kind, maskSource, scale, pixelRatio = 1, resizeScale, fontSize = 32, maxParticles = 300) {
+    async function record(kind, maskSource, scale, pixelRatio = 1, resizeScale, fontSize = 32, maxParticles = 300, measurement = {}) {
       currentTarget = await createTarget(kind, scale, fontSize);
-      activeRecording = { kind, maskSource, scale, pixelRatio, resizeScale, fontSize, maxParticles, frames: [], opacity: [], scales: [], fireProgress: [], smokeProgress: [], textDraws: [], nonblank: false, doneCount: 0 };
-      const particleSettings = { intensity: 1, particlesPerPixel: 0.003, maxParticles, particleLife: 5, lift: 0.4, spread: 0.8, drift: 0.7, turbulence: 0.3 };
+      const basis = measurement.basis ?? "short-side";
+      const group = measurement.group ?? "target";
+      if (group === "wrapping") {
+        currentTarget.textContent = "BURN SMOKE";
+        currentTarget.style.height = "auto";
+        if (measurement.wrapped) currentTarget.style.width = `${90 * scale}px`;
+      }
+      activeRecording = { kind, maskSource, scale, pixelRatio, resizeScale, fontSize, maxParticles, basis, group, wrapped: !!measurement.wrapped, wrapDuringPlay: !!measurement.wrapDuringPlay, frames: [], opacity: [], scales: [], fireProgress: [], smokeProgress: [], textDraws: [], lineCounts: [], targetDimensions: [], nonblank: false, doneCount: 0 };
+      const particleSettings = { intensity: 1, particlesPerPixel: group === "target" ? 0.003 : 1, maxParticles, particleLife: 5, lift: 0.4, spread: 0.8, drift: 0.7, turbulence: 0.3 };
       const controller = burn(currentTarget, {
-        referenceSize: 60,
+        referenceSize: basis === "short-side" ? 60 : fontSize,
+        scaleBasis: basis === "callback" ? (target) => Number.parseFloat(getComputedStyle(target).fontSize) : basis,
         seed: "browser-target-scaling",
         mask: { source: maskSource, stepPx: 3, luminanceThreshold: 100, offset: { x: 3, y: 6 } },
         canvas: { pixelRatio, className: "burn-in-browser-test" },
@@ -109,11 +117,14 @@ try {
       for (const [frameIndex, timestamp] of [0, 10, 20, 40, 60, 80, 100, 140, 160, 200, 250, 300, 350, 400].entries()) {
         if (resizeScale && frameIndex === 4) {
           scale = resizeScale;
-          currentTarget.style.width = `${180 * scale}px`;
-          currentTarget.style.height = `${60 * scale}px`;
+          if (!measurement.fontOnlyResize) {
+            currentTarget.style.width = `${180 * scale}px`;
+            currentTarget.style.height = `${60 * scale}px`;
+            currentTarget.style.lineHeight = `${60 * scale}px`;
+          }
           currentTarget.style.fontSize = `${fontSize * scale}px`;
-          currentTarget.style.lineHeight = `${60 * scale}px`;
         }
+        if (measurement.wrapDuringPlay && frameIndex === 4) currentTarget.style.width = `${90 * scale}px`;
 
         currentFrame = [];
         const callbacks = [...animationFrames.values()];
@@ -122,6 +133,11 @@ try {
         activeRecording.frames.push(currentFrame);
         activeRecording.opacity.push(currentTarget.style.opacity);
         activeRecording.scales.push(scale);
+        const range = document.createRange();
+        range.selectNodeContents(currentTarget);
+        activeRecording.lineCounts.push(range.getClientRects().length);
+        const rectangle = currentTarget.getBoundingClientRect();
+        activeRecording.targetDimensions.push([rectangle.width, rectangle.height]);
 
         if (currentFrame.length > 0 && !activeRecording.nonblank) {
           const pixels = overlay.getContext("2d").getImageData(0, 0, overlay.width, overlay.height).data;
@@ -150,6 +166,17 @@ try {
       // sizes. Test motion and fading from each birth independently of that
       // rasterization, in addition to the exact multi-particle cases above.
       for (const scale of [1, 0.5, 2]) await record("text", "text", scale, 1, undefined, 40, 1);
+
+      for (const basis of ["font-size", "callback"]) {
+        for (const scale of [1, 0.5, 2]) {
+          await record("text", "text", scale, 1, undefined, 20, 1, { basis, group: "wrapping" });
+          await record("text", "text", scale, 1, undefined, 20, 1, { basis, group: "wrapping", wrapped: true });
+        }
+        await record("text", "text", 1, 1, undefined, 20, 1, { basis, group: "wrapping", wrapDuringPlay: true });
+        await record("text", "text", 1, 1, undefined, 20, 1, { basis, group: "font-only" });
+        await record("text", "text", 1, 1, 2, 20, 1, { basis, group: "font-only", fontOnlyResize: true });
+        await record("text", "text", 1, 1, 0.5, 20, 1, { basis, group: "font-only", fontOnlyResize: true });
+      }
     } finally {
       CanvasRenderingContext2D.prototype.drawImage = originalDrawImage;
       CanvasRenderingContext2D.prototype.fillText = originalFillText;
@@ -175,14 +202,25 @@ try {
   let maximumCoordinateError = 0;
 
   for (const actual of results.recordings) {
-    const reference = results.recordings.find((entry) => entry.kind === actual.kind && entry.maskSource === actual.maskSource && entry.scale === 1 && !entry.resizeScale && entry.fontSize === actual.fontSize && entry.maxParticles === actual.maxParticles);
-    const label = `${actual.kind}/${actual.maskSource}/${actual.scale}/${actual.pixelRatio}/${actual.resizeScale}/${actual.fontSize}`;
+    const reference = results.recordings.find((entry) => entry.kind === actual.kind && entry.maskSource === actual.maskSource && entry.scale === 1 && !entry.resizeScale && entry.fontSize === actual.fontSize && entry.maxParticles === actual.maxParticles && entry.basis === actual.basis && entry.group === actual.group && !entry.wrapped && !entry.wrapDuringPlay);
+    const label = `${actual.kind}/${actual.maskSource}/${actual.scale}/${actual.pixelRatio}/${actual.resizeScale}/${actual.fontSize}/${actual.basis}/${actual.group}/${actual.wrapped}/${actual.wrapDuringPlay}`;
     assert.equal(actual.doneCount, 1, label);
     assert.equal(actual.nonblank, true, label);
     assert.deepEqual(actual.frames.map((frame) => frame.length), reference.frames.map((frame) => frame.length), `${label}: emission`);
     assert.deepEqual(actual.fireProgress, reference.fireProgress, `${label}: fire curve`);
     assert.deepEqual(actual.smokeProgress, reference.smokeProgress, `${label}: smoke curve`);
     assert.deepEqual(actual.opacity, reference.opacity, `${label}: reveal`);
+    if (actual.group === "wrapping") {
+      assert.equal(reference.lineCounts[0], 1, `${label}: reference is one line`);
+      if (actual.wrapped) assert.equal(actual.lineCounts[0], 2, `${label}: actually wrapped`);
+      if (actual.wrapDuringPlay) {
+        assert.equal(actual.lineCounts[0], 1);
+        assert.equal(actual.lineCounts[4], 2);
+      }
+    }
+    if (actual.group === "font-only") {
+      assert.deepEqual(actual.targetDimensions, reference.targetDimensions, `${label}: fixed bounds`);
+    }
 
     const births = new Map();
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { burn } from "../src/core/effect";
 import { resolveBurnOptions } from "../src/core/options";
-import type { BurnMaskSource, BurnOptions, BurnParticleOptions } from "../src/core/types";
+import type { BurnMaskSource, BurnOptions, BurnParticleOptions, BurnScaleBasis } from "../src/core/types";
 import { createRectangle, FakeCanvasElement, FakeElement, FakeImageElement, FakeText, installFakeDom } from "./helpers/fake-dom";
 
 type RenderedParticle = { x: number; y: number; width: number; height: number; alpha: number };
@@ -9,6 +9,8 @@ type TargetKind = "element" | "image" | "canvas" | "text";
 type RecordingOptions = {
   scale?: number;
   referenceSize?: number;
+  scaleBasis?: BurnScaleBasis;
+  fontSize?: number;
   pixelRatio?: number;
   width?: number;
   height?: number;
@@ -20,6 +22,7 @@ type RecordingOptions = {
   resizeAtFrame?: number;
   resizeScale?: number;
   viewportResize?: boolean;
+  preserveDimensionsOnResize?: boolean;
 };
 
 function recordEffect(kind: "fire" | "smoke", recording: RecordingOptions = {}) {
@@ -33,6 +36,7 @@ function recordEffect(kind: "fire" | "smoke", recording: RecordingOptions = {}) 
   const top = recording.top ?? 60;
   target.rectangle = createRectangle(left, top, width * scale, height * scale);
   target.style.opacity = "0.7";
+  if (recording.fontSize !== undefined) target.style.fontSize = `${recording.fontSize * scale}px`;
 
   if (target instanceof FakeCanvasElement) {
     target.width = 120;
@@ -48,6 +52,7 @@ function recordEffect(kind: "fire" | "smoke", recording: RecordingOptions = {}) 
   const progress: number[] = [];
   const options: BurnOptions = {
     referenceSize: Object.hasOwn(recording, "referenceSize") ? recording.referenceSize : 60,
+    scaleBasis: recording.scaleBasis,
     seed: "target-scaling",
     canvas: { pixelRatio: recording.pixelRatio ?? 1 },
     mask: {
@@ -113,7 +118,10 @@ function recordEffect(kind: "fire" | "smoke", recording: RecordingOptions = {}) 
   for (const [frameIndex, timestamp] of timestamps.entries()) {
     if (frameIndex === recording.resizeAtFrame) {
       scale = recording.resizeScale ?? 2;
-      target.rectangle = createRectangle(left, top, width * scale, height * scale);
+      if (!recording.preserveDimensionsOnResize) {
+        target.rectangle = createRectangle(left, top, width * scale, height * scale);
+      }
+      if (recording.fontSize !== undefined) target.style.fontSize = `${recording.fontSize * scale}px`;
 
       if (recording.viewportResize) {
         const resizeListener = windowAddEventListener.mock.calls.find(([eventName]) => eventName === "resize")?.[1] as () => void;
@@ -284,4 +292,83 @@ it("resolves reference size through presets without mutating their spatial optio
   expect(scaled.fire).toEqual(legacy.fire);
   expect(scaled.smoke).toEqual(legacy.smoke);
   expect(resolveBurnOptions().referenceSize).toBeUndefined();
+  expect(resolveBurnOptions().scaleBasis).toBe("short-side");
+  expect(resolveBurnOptions({ preset: "wildfire", scaleBasis: "font-size" }).scaleBasis).toBe("font-size");
+});
+
+describe.each(["fire", "smoke"] as const)("%s scale basis", (kind) => {
+  const fontMeasurement = (target: HTMLElement) => Number.parseFloat(target.style.fontSize);
+  const measurements: [BurnScaleBasis, number][] = [
+    ["short-side", 60], ["width", 120], ["height", 60], ["font-size", 30], [fontMeasurement, 30]
+  ];
+
+  it.each(measurements)("normalizes rendering using %s", (scaleBasis, referenceSize) => {
+    for (const targetKind of ["text", "image", "canvas", "element"] as const) {
+      const settings = { targetKind, scaleBasis, referenceSize, fontSize: 30 };
+      const reference = recordEffect(kind, settings);
+      for (const scale of [0.5, 2]) {
+        expectSameNormalizedRendering(recordEffect(kind, { ...settings, scale }), reference);
+      }
+    }
+  });
+
+  it("keeps particle size and motion when text changes from a wide to a tall layout", () => {
+    const settings: RecordingOptions = {
+      targetKind: "text", scaleBasis: "font-size", fontSize: 30, referenceSize: 30,
+      particleOptions: { maxParticles: 1, particlesPerPixel: 1, particleLife: 6 }
+    };
+    const singleLine = recordEffect(kind, { ...settings, width: 120, height: 60 });
+    const wrapped = recordEffect(kind, { ...settings, width: 60, height: 120 });
+    expect(wrapped.progress).toEqual(singleLine.progress);
+    expect(wrapped.opacity).toEqual(singleLine.opacity);
+    expect(wrapped.frames.flat().map(({ width, height }) => ({ width, height })))
+      .toEqual(singleLine.frames.flat().map(({ width, height }) => ({ width, height })));
+    const firstSingleLine = singleLine.frames.find((frame) => frame.length > 0)![0];
+    const firstWrapped = wrapped.frames.find((frame) => frame.length > 0)![0];
+    for (const frameIndex of [2, 3, 4]) {
+      const actual = wrapped.frames[frameIndex][0];
+      const expected = singleLine.frames[frameIndex][0];
+      expect(actual.x - firstWrapped.x).toBeCloseTo(expected.x - firstSingleLine.x, 9);
+      expect(actual.y - firstWrapped.y).toBeCloseTo(expected.y - firstSingleLine.y, 9);
+    }
+  });
+
+  it.each(["font-size", fontMeasurement] as BurnScaleBasis[])("refreshes %s with unchanged target bounds", (scaleBasis) => {
+    const settings: RecordingOptions = {
+      scaleBasis, fontSize: 30, referenceSize: 30,
+      particleOptions: { maxParticles: 1, particlesPerPixel: 1, particleLife: 6 }
+    };
+    const reference = recordEffect(kind, settings);
+    const actual = recordEffect(kind, {
+      ...settings, resizeAtFrame: 4, resizeScale: 2, preserveDimensionsOnResize: true
+    });
+    expect(actual.progress).toEqual(reference.progress);
+    expect(actual.opacity).toEqual(reference.opacity);
+    for (const dimension of ["x", "y", "width", "height"] as const) {
+      expect(actual.frames[4][0][dimension] / 2).toBeCloseTo(reference.frames[4][0][dimension], 9);
+    }
+  });
+
+  it.each([0, -1, NaN, Infinity, -Infinity, null, undefined, "60"])("falls back when a callback returns %s", (measurement) => {
+    const legacy = recordEffect(kind, { referenceSize: undefined });
+    const actual = recordEffect(kind, { scaleBasis: (() => measurement) as BurnScaleBasis });
+    expect(actual.frames).toEqual(legacy.frames);
+  });
+
+  it("contains callback errors and does not call a basis without a valid reference", () => {
+    const callback = vi.fn(() => { throw new Error("Invalid target measurement"); });
+    const legacy = recordEffect(kind, { referenceSize: undefined });
+    expect(recordEffect(kind, { scaleBasis: callback }).frames).toEqual(legacy.frames);
+    expect(callback).toHaveBeenCalled();
+    callback.mockClear();
+    for (const referenceSize of [undefined, 0, NaN]) {
+      expect(recordEffect(kind, { scaleBasis: callback, referenceSize }).frames).toEqual(legacy.frames);
+    }
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("falls back for unknown basis names", () => {
+    const legacy = recordEffect(kind, { referenceSize: undefined });
+    expect(recordEffect(kind, { scaleBasis: "invalid" as BurnScaleBasis }).frames).toEqual(legacy.frames);
+  });
 });

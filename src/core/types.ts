@@ -12,6 +12,13 @@ export type BurnMaskSource = "auto" | "alpha" | "luminance" | "bounds" | "text";
 
 export type BurnRange = number | [number, number];
 
+export type BurnScaleBasis =
+  | "short-side"
+  | "width"
+  | "height"
+  | "font-size"
+  | ((target: HTMLElement) => number);
+
 export type BurnColorStop = {
   at: number;
   color: string;
@@ -96,11 +103,19 @@ export type BurnOptions = {
   preset?: BurnPresetName;
   seed?: string | number;
   /**
-   * Shorter target side in CSS pixels at which spatial options have scale 1.
+   * Selected scale basis in CSS pixels at which spatial options have scale 1.
    * Enables uniform target-relative geometry and normalized emission. Omit for
    * legacy pixel sizing. Non-finite/non-positive values also use legacy sizing.
    */
   referenceSize?: number;
+  /**
+   * Measurement used with referenceSize. Defaults to the shorter target side.
+   * Font size keeps particle geometry stable when text wraps. A callback returns
+   * a CSS-pixel length and is evaluated on layout checks, including each frame.
+   * Invalid measurements or callback errors fall back to legacy pixel sizing.
+   * Ignored when referenceSize is omitted or invalid.
+   */
+  scaleBasis?: BurnScaleBasis;
   host?: HTMLElement | null;
   timing?: BurnTimingOptions;
   fire?: BurnParticleOptions;
@@ -131,6 +146,7 @@ export type ResolvedBurnOptions = {
   preset: BurnPresetName;
   seed: string | number | undefined;
   referenceSize?: number;
+  scaleBasis: BurnScaleBasis;
   host: HTMLElement | null;
   timing: ResolvedBurnTimingOptions;
   fire: ResolvedBurnParticleOptions;

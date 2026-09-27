@@ -62,7 +62,12 @@ function timedProgress(elapsedMs: number, startsAtMs: number, durationMs: number
   return Math.min(1, Math.max(0, (elapsedMs - startsAtMs) / Math.max(1, durationMs)));
 }
 
-function resolveTargetScale(rectangle: DOMRect, referenceSize: number | undefined): number | undefined {
+function resolveTargetScale(
+  target: HTMLElement,
+  rectangle: DOMRect,
+  options: ResolvedBurnOptions
+): number | undefined {
+  const { referenceSize, scaleBasis } = options;
   if (
     typeof referenceSize !== "number" || !Number.isFinite(referenceSize) || referenceSize <= 0 ||
     !Number.isFinite(rectangle.width) || !Number.isFinite(rectangle.height) ||
@@ -71,7 +76,38 @@ function resolveTargetScale(rectangle: DOMRect, referenceSize: number | undefine
     return undefined;
   }
 
-  const scale = Math.min(rectangle.width, rectangle.height) / referenceSize;
+  let measurement: number;
+
+  try {
+    if (typeof scaleBasis === "function") {
+      measurement = scaleBasis(target);
+    } else {
+      switch (scaleBasis) {
+        case "short-side":
+          measurement = Math.min(rectangle.width, rectangle.height);
+          break;
+        case "width":
+          measurement = rectangle.width;
+          break;
+        case "height":
+          measurement = rectangle.height;
+          break;
+        case "font-size":
+          measurement = Number.parseFloat(target.ownerDocument.defaultView!.getComputedStyle(target).fontSize);
+          break;
+        default:
+          return undefined;
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  if (typeof measurement !== "number" || !Number.isFinite(measurement) || measurement <= 0) {
+    return undefined;
+  }
+
+  const scale = measurement / referenceSize;
 
   return Number.isFinite(scale) && scale > 0 &&
     Number.isFinite(rectangle.width / scale) && Number.isFinite(rectangle.height / scale) ? scale : undefined;
@@ -186,10 +222,14 @@ export class BurnInEffect implements BurnController {
     this.ownerWindow.visualViewport?.addEventListener("resize", this.handleViewportChange);
   }
 
-  private layout(rectangle = this.target.getBoundingClientRect()): void {
+  private measureTarget(): { rectangle: DOMRect; scale: number | undefined } {
+    const rectangle = this.target.getBoundingClientRect();
+    return { rectangle, scale: resolveTargetScale(this.target, rectangle, this.options) };
+  }
+
+  private layout({ rectangle, scale: targetScale } = this.measureTarget()): void {
     this.targetWidth = rectangle.width;
     this.targetHeight = rectangle.height;
-    const targetScale = resolveTargetScale(rectangle, this.options.referenceSize);
     this.targetScale = targetScale ?? 1;
     this.usesReferenceSize = targetScale !== undefined;
     const previousOpacity = this.target.style.opacity;
@@ -232,10 +272,14 @@ export class BurnInEffect implements BurnController {
   }
 
   private refreshLayout(): void {
-    const rectangle = this.target.getBoundingClientRect();
+    const measurement = this.measureTarget();
+    const { rectangle, scale } = measurement;
 
-    if (!Object.is(rectangle.width, this.targetWidth) || !Object.is(rectangle.height, this.targetHeight)) {
-      this.layout(rectangle);
+    if (
+      !Object.is(rectangle.width, this.targetWidth) || !Object.is(rectangle.height, this.targetHeight) ||
+      (scale ?? 1) !== this.targetScale || (scale !== undefined) !== this.usesReferenceSize
+    ) {
+      this.layout(measurement);
     } else {
       this.positionCanvas(rectangle);
     }

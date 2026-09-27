@@ -192,12 +192,12 @@ export function installFakeDom() {
   vi.stubGlobal("HTMLImageElement", FakeImageElement);
   vi.stubGlobal("Text", FakeText);
   vi.stubGlobal("NodeFilter", { SHOW_TEXT: 4 });
-  vi.stubGlobal("getComputedStyle", (element: FakeElement) => ({
+  const computedStyle = (element: FakeElement) => ({
     display: "block",
     visibility: "visible",
     opacity: element.style.opacity || "1",
-    fontSize: `${element.rectangle.height}px`,
-    font: `${element.rectangle.height}px sans-serif`,
+    fontSize: element.style.fontSize || `${element.rectangle.height}px`,
+    font: `${element.style.fontSize || `${element.rectangle.height}px`} sans-serif`,
     fontFamily: "sans-serif",
     fontStyle: "normal",
     fontVariant: "normal",
@@ -207,7 +207,9 @@ export function installFakeDom() {
     wordSpacing: "0px",
     direction: "ltr",
     textTransform: "none"
-  }));
+  });
+  vi.stubGlobal("getComputedStyle", computedStyle);
+  fakeWindow.getComputedStyle = computedStyle as unknown as Window["getComputedStyle"];
 
   return {
     fakeDocument,

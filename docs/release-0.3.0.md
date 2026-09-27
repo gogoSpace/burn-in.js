@@ -37,18 +37,18 @@ the same merge commit and create the GitHub release. Do not move an existing tag
 
 ## Consumer integration notes
 
-API: `burn(target, { referenceSize: 100, ...options })`, or the same top-level
-option in the Vue adapter. Reference size is a fixed CSS-pixel length for the
-target's shorter side. Keep it constant across responsive sizes; derive neither
-it nor a separate motion multiplier from the current font size. Measure a desired
-baseline once if exact preservation at that layout is required.
+API: `burn(target, { referenceSize: 120, scaleBasis: "font-size", ...options })`,
+or the same top-level options in the Vue adapter. Generic object targets may
+instead use the default shorter side, width, height, or a target callback.
+Keep the reference fixed across responsive sizes. Calibrate it to the desired
+baseline's selected measurement, not to the current size on every replay.
 
-For the existing gogoSpace hero, a practical starting point is **100 CSS pixels**
-for both word targets. At a 100 px shorter side this preserves the configured
-particle sizes/motion; at 200 px they double. This is a tuning recommendation,
-not a visually approved consumer setting. The current desktop wordmark CSS uses
-`17.4vw` (with a large-screen cap); its size therefore grows substantially across
-layouts. The consumer retains its own final visual review.
+For the existing gogoSpace hero, use the font-size basis for both word targets.
+Choose the reference from the previously approved desktop font size so that the
+existing motion is preserved there and becomes proportional elsewhere. The
+value 120 above is an API example, not an approved visual setting. Do not use
+the earlier shorter-side recommendation for wrapping text. The consumer retains
+its own final visual review.
 
 Spatial options now use reference units when enabled. In particular, convert a
 mask offset measured in current CSS pixels using `offset / targetScale`, or use
@@ -76,3 +76,10 @@ at `0.2.0` before that bump; npm authentication is valid.
 Next gate: release PR review/CI and merge, followed by the exact-commit gate above.
 Final release commit, archive integrity, registry verification, and tag links are
 to be recorded on the release PR and the published GitHub release once verified.
+
+## Scale-basis follow-up before publication
+
+The initial 0.3.0 archive was not published. Its 2FA process was cancelled while
+responsive wrapping was discussed. A follow-up feature PR adds scaleBasis to the
+already bumped main. After merging it, repeat the exact-commit gate and create a
+new archive from that merge commit. Never publish the previous staged archive.
