@@ -156,8 +156,9 @@ burn(headingElement, {
 
 ### Target-relative Scaling
 
-Set `referenceSize` to the shorter side of the target, in CSS pixels, at the size
-where your particle settings are tuned:
+Set `referenceSize` to the measurement, in CSS pixels, at which your particle
+settings are tuned. `scaleBasis` selects that measurement and defaults to the
+shorter side of the target:
 
 ```ts
 burn(targetElement, {
@@ -174,7 +175,35 @@ the same target at `150 × 50` uses `0.5`, and at `600 × 200` uses `2`. Both ax
 use the same scale, so particles retain their shape. The shorter side is used
 instead of area, diagonal, or width: adding characters to a wide, single-line
 heading does not enlarge its flames while its height stays the same. Narrow or
-multiline targets use the same geometry rule; font size is never the scale input.
+multiline targets also follow that rule by default. For wrapping text, use the
+font-size basis below so layout changes do not enlarge particles.
+
+Select a different basis when layout dimensions do not represent content scale:
+
+```ts
+burn(headingElement, {
+  referenceSize: 120,
+  scaleBasis: "font-size"
+});
+```
+
+Here the scale is the target's computed CSS `font-size` divided by 120. A 120 px
+heading keeps the same particle sizes and motion when it wraps into two lines.
+A change to 90 px scales them to 0.75. The mask still follows the actual lines.
+
+| `scaleBasis` | Measurement in CSS pixels |
+| --- | --- |
+| `"short-side"` (default) | Smaller rendered bounding-rectangle dimension. |
+| `"width"` | Rendered bounding-rectangle width. |
+| `"height"` | Rendered bounding-rectangle height. |
+| `"font-size"` | Computed font size of the target element. |
+| `(target: HTMLElement) => number` | Custom synchronous measurement of the target. |
+
+For example, a custom function can measure a representative child in a mixed
+content container. Return a positive finite CSS-pixel length in the same units
+as `referenceSize`; the result is a measurement, not the final scale multiplier.
+The font-size basis reads the target itself, not differently styled descendants,
+and does not include CSS transforms. Use a callback for those custom semantics.
 
 This works with text, image, canvas, and generic element masks. Particle sizes,
 initial velocities, lift, spread, turbulence, drift, mask offsets, and canvas
@@ -193,14 +222,17 @@ shift a mask by roughly a reference pixel at some font sizes, changing edge
 samples, emitter weights, and seeded birth positions. Motion and fading from
 each particle's birth keep the same scale and lifetime rules.
 
-The effect checks target dimensions each animation frame and on viewport changes.
-Resizing rebuilds the mask and scales live particle geometry while preserving
-their ages and velocities in reference coordinates. It does not restart the
-animation. Content changes without a size change require replaying the effect.
+The effect checks target dimensions and the selected measurement each animation
+frame and on viewport changes. A callback may therefore run each frame; keep it
+fast and free of side effects. Changes rebuild the mask and scale live particle
+geometry while preserving ages and velocities in reference coordinates. Font
+size or callback changes are detected even inside a fixed-size container. The
+animation does not restart. Content changes without a dimension or measurement
+change require replaying the effect.
 
 Keep `referenceSize` fixed across responsive layouts and replays. Computing it
 from the current target before every call would always select scale `1`. To keep
-a particular existing layout as your baseline, measure its shorter side once
+a particular existing layout as your baseline, measure its selected basis once
 and use that value as the reference. A smaller reference makes the effect larger
 relative to the target; it also lowers normalized mask coverage and emission.
 
@@ -208,6 +240,9 @@ Omit `referenceSize` for the existing pixel-based behavior. Non-number,
 non-finite, zero, or negative reference values also use scale `1`. A zero,
 negative, or non-finite target dimension uses scale `1`, with invalid sampling
 dimensions reduced to at least one pixel; a later valid resize is measured again.
+An unknown basis, a non-number/non-finite/non-positive measurement, or an error
+from a callback also uses legacy sizing for that layout check. Without a valid
+`referenceSize`, the basis is not evaluated.
 `canvas.pixelRatio` remains independent: it controls backing-store resolution,
 not particle geometry. Its existing minimum of `1` is unchanged.
 
@@ -299,7 +334,8 @@ Supported mask sources:
 
 | Group | Controls |
 | --- | --- |
-| `referenceSize` | Optional shorter target side in CSS pixels for uniform spatial scaling and normalized emission. |
+| `referenceSize` | Optional reference measurement in CSS pixels for uniform spatial scaling and normalized emission. |
+| `scaleBasis` | `"short-side"`, `"width"`, `"height"`, `"font-size"`, or a target callback. Used only with a valid `referenceSize`. |
 | `timing` | Delay, ignition, burn, fade, ember, smoke, and easing durations. |
 | `fire` | Fire particle density, colors, lift and lift curve, spread, turbulence, size, lifetime, and blending. |
 | `smoke` | Smoke particle density, colors, lift and lift curve, drift, expansion, size, lifetime, and blending. |

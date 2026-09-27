@@ -6,6 +6,7 @@ export const defaultBurnOptions: ResolvedBurnOptions = {
   preset: "soft",
   seed: undefined,
   referenceSize: undefined,
+  scaleBasis: "short-side",
   host: null,
   timing: {
     delayMs: 0,

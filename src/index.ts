@@ -15,6 +15,7 @@ export type {
   BurnPresetName,
   BurnRange,
   BurnRevealOptions,
+  BurnScaleBasis,
   BurnTimingOptions,
   ResolvedBurnOptions
 } from "./core/types";
