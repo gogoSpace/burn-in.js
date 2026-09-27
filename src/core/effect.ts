@@ -62,6 +62,21 @@ function timedProgress(elapsedMs: number, startsAtMs: number, durationMs: number
   return Math.min(1, Math.max(0, (elapsedMs - startsAtMs) / Math.max(1, durationMs)));
 }
 
+function resolveTargetScale(rectangle: DOMRect, referenceSize: number | undefined): number | undefined {
+  if (
+    typeof referenceSize !== "number" || !Number.isFinite(referenceSize) || referenceSize <= 0 ||
+    !Number.isFinite(rectangle.width) || !Number.isFinite(rectangle.height) ||
+    rectangle.width <= 0 || rectangle.height <= 0
+  ) {
+    return undefined;
+  }
+
+  const scale = Math.min(rectangle.width, rectangle.height) / referenceSize;
+
+  return Number.isFinite(scale) && scale > 0 &&
+    Number.isFinite(rectangle.width / scale) && Number.isFinite(rectangle.height / scale) ? scale : undefined;
+}
+
 export class BurnInEffect implements BurnController {
   public readonly done: Promise<void>;
 
@@ -76,17 +91,23 @@ export class BurnInEffect implements BurnController {
   private readonly smokeSprite: HTMLCanvasElement;
   private readonly originalTargetOpacity: string;
   private readonly handleViewportChange = (): void => {
-    this.positionCanvas();
+    this.refreshLayout();
   };
   private readonly fireParticles: Particle[] = [];
   private readonly smokeParticles: Particle[] = [];
   private emitters: BurnEmitter[] = [];
   private coveredPixelCount = 0;
   private animationFrame = 0;
-  private canvasStyleHeight = 0;
-  private canvasStyleWidth = 0;
+  // Geometry, including canvas margins, stays in reference coordinates. Only
+  // the renderer maps it to CSS pixels; pixelRatio controls raster resolution.
+  private canvasHeight = 0;
+  private canvasWidth = 0;
   private canvasPaddingX = 0;
   private canvasPaddingTop = 0;
+  private targetWidth = 0;
+  private targetHeight = 0;
+  private targetScale = 1;
+  private usesReferenceSize = false;
   private pixelRatio = 1;
   private startTime: number | null = null;
   private settled = false;
@@ -165,8 +186,23 @@ export class BurnInEffect implements BurnController {
     this.ownerWindow.visualViewport?.addEventListener("resize", this.handleViewportChange);
   }
 
-  private layout(): void {
-    const source = buildBurnSource(this.target, this.options.mask);
+  private layout(rectangle = this.target.getBoundingClientRect()): void {
+    this.targetWidth = rectangle.width;
+    this.targetHeight = rectangle.height;
+    const targetScale = resolveTargetScale(rectangle, this.options.referenceSize);
+    this.targetScale = targetScale ?? 1;
+    this.usesReferenceSize = targetScale !== undefined;
+    const previousOpacity = this.target.style.opacity;
+    // A resize can happen while reveal opacity is zero. Sample the original
+    // content, then immediately restore the in-progress reveal state.
+    this.target.style.opacity = this.originalTargetOpacity;
+    let source;
+
+    try {
+      source = buildBurnSource(this.target, this.options.mask, this.targetScale);
+    } finally {
+      this.target.style.opacity = previousOpacity;
+    }
     const expectedSmoke = this.options.smoke.enabled
       ? this.options.smoke.spriteSize * (1 + this.options.smoke.expansion) * Math.max(0.2, this.options.smoke.intensity)
       : 0;
@@ -182,6 +218,12 @@ export class BurnInEffect implements BurnController {
       y: emitter.y + paddingTop,
       weight: emitter.weight
     }));
+
+    for (const particle of [...this.fireParticles, ...this.smokeParticles]) {
+      particle.x += paddingX - this.canvasPaddingX;
+      particle.y += paddingTop - this.canvasPaddingTop;
+    }
+
     this.canvasPaddingX = paddingX;
     this.canvasPaddingTop = paddingTop;
     this.coveredPixelCount = Math.max(1, source.emitters.length * this.options.mask.stepPx * this.options.mask.stepPx);
@@ -189,21 +231,36 @@ export class BurnInEffect implements BurnController {
     this.positionCanvas();
   }
 
-  private positionCanvas(): void {
-    const targetRect = this.target.getBoundingClientRect();
+  private refreshLayout(): void {
+    const rectangle = this.target.getBoundingClientRect();
 
-    this.canvas.style.left = `${Math.round(targetRect.left - this.canvasPaddingX)}px`;
-    this.canvas.style.top = `${Math.round(targetRect.top - this.canvasPaddingTop)}px`;
+    if (!Object.is(rectangle.width, this.targetWidth) || !Object.is(rectangle.height, this.targetHeight)) {
+      this.layout(rectangle);
+    } else {
+      this.positionCanvas(rectangle);
+    }
+  }
+
+  private positionCanvas(targetRect = this.target.getBoundingClientRect()): void {
+    const left = (Number.isFinite(targetRect.left) ? targetRect.left : 0) - this.canvasPaddingX * this.targetScale;
+    const top = (Number.isFinite(targetRect.top) ? targetRect.top : 0) - this.canvasPaddingTop * this.targetScale;
+
+    this.canvas.style.left = `${this.usesReferenceSize ? left : Math.round(left)}px`;
+    this.canvas.style.top = `${this.usesReferenceSize ? top : Math.round(top)}px`;
   }
 
   private resizeCanvas(styleWidth: number, styleHeight: number): void {
-    this.canvasStyleWidth = Math.max(1, styleWidth);
-    this.canvasStyleHeight = Math.max(1, styleHeight);
-    this.canvas.width = Math.max(1, Math.round(this.canvasStyleWidth * this.pixelRatio));
-    this.canvas.height = Math.max(1, Math.round(this.canvasStyleHeight * this.pixelRatio));
-    this.canvas.style.width = `${this.canvasStyleWidth}px`;
-    this.canvas.style.height = `${this.canvasStyleHeight}px`;
-    this.context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    this.canvasWidth = Math.max(1, styleWidth);
+    this.canvasHeight = Math.max(1, styleHeight);
+    const displayWidth = this.canvasWidth * this.targetScale;
+    const displayHeight = this.canvasHeight * this.targetScale;
+    this.canvas.width = Math.max(1, Math.round(displayWidth * this.pixelRatio));
+    this.canvas.height = Math.max(1, Math.round(displayHeight * this.pixelRatio));
+    this.canvas.style.width = `${displayWidth}px`;
+    this.canvas.style.height = `${displayHeight}px`;
+    // Compensate integer backing-store rounding so its CSS projection keeps
+    // exactly the same uniform target scale in both axes, including below 1.
+    this.context.setTransform(this.canvas.width / this.canvasWidth, 0, 0, this.canvas.height / this.canvasHeight, 0, 0);
   }
 
   private expandCanvas(expandLeft: number, expandTop: number, expandRight: number, expandBottom: number): void {
@@ -227,7 +284,7 @@ export class BurnInEffect implements BurnController {
       }
     }
 
-    this.resizeCanvas(this.canvasStyleWidth + expandLeft + expandRight, this.canvasStyleHeight + expandTop + expandBottom);
+    this.resizeCanvas(this.canvasWidth + expandLeft + expandRight, this.canvasHeight + expandTop + expandBottom);
     this.positionCanvas();
   }
 
@@ -253,9 +310,9 @@ export class BurnInEffect implements BurnController {
     const expandLeft = minimumX < canvasExpansionThreshold ? Math.ceil(canvasExpansionPadding - minimumX) : 0;
     const expandTop = minimumY < canvasExpansionThreshold ? Math.ceil(canvasExpansionPadding - minimumY) : 0;
     const expandRight =
-      maximumX > this.canvasStyleWidth - canvasExpansionThreshold ? Math.ceil(maximumX - this.canvasStyleWidth + canvasExpansionPadding) : 0;
+      maximumX > this.canvasWidth - canvasExpansionThreshold ? Math.ceil(maximumX - this.canvasWidth + canvasExpansionPadding) : 0;
     const expandBottom =
-      maximumY > this.canvasStyleHeight - canvasExpansionThreshold ? Math.ceil(maximumY - this.canvasStyleHeight + canvasExpansionPadding) : 0;
+      maximumY > this.canvasHeight - canvasExpansionThreshold ? Math.ceil(maximumY - this.canvasHeight + canvasExpansionPadding) : 0;
 
     this.expandCanvas(expandLeft, expandTop, expandRight, expandBottom);
   }
@@ -380,6 +437,7 @@ export class BurnInEffect implements BurnController {
   }
 
   private frame(timeStamp: number): void {
+    this.refreshLayout();
     if (this.startTime === null) {
       this.startTime = timeStamp;
     }
@@ -389,7 +447,7 @@ export class BurnInEffect implements BurnController {
     const fireEndMs = timing.igniteMs + timing.burnMs + timing.fadeMs + timing.emberMs;
     const smokeEndMs = timing.smokeMs;
     const doneAtMs = Math.max(fireEndMs, smokeEndMs);
-    this.context.clearRect(0, 0, this.canvasStyleWidth, this.canvasStyleHeight);
+    this.context.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
     this.updateReveal(elapsedMs);
 
     let fireForce = 0;

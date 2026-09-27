@@ -5,6 +5,7 @@ const transparentStop = { at: 1, color: "rgba(0, 0, 0, 0)" };
 export const defaultBurnOptions: ResolvedBurnOptions = {
   preset: "soft",
   seed: undefined,
+  referenceSize: undefined,
   host: null,
   timing: {
     delayMs: 0,

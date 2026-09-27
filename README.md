@@ -19,6 +19,7 @@ Burn-In.js adds a dramatic fire-and-smoke reveal to real web content. Point it a
 - Use alpha, luminance, text, or bounds masks for different source types.
 - Pick from six presets: `soft`, `wildfire`, `smolder`, `flash`, `ritual`, and `psycho`.
 - Replay deterministic particle patterns with `seed`.
+- Scale geometry with the target using `referenceSize`, without increasing particle counts.
 - Use the framework-neutral TypeScript core or the optional Vue 3 component.
 - Cancel effects and wait for completion with a typed controller.
 
@@ -153,6 +154,63 @@ burn(headingElement, {
 
 `seed` controls the random particle pattern. Use a stable string or number when you want the same element and options to replay with the same fire and smoke behavior. Omit it when every burn should feel slightly different.
 
+### Target-relative Scaling
+
+Set `referenceSize` to the shorter side of the target, in CSS pixels, at the size
+where your particle settings are tuned:
+
+```ts
+burn(targetElement, {
+  referenceSize: 100,
+  seed: "responsive-reveal",
+  fire: { particleSize: [10, 28] },
+  smoke: { particleSize: [28, 64] }
+});
+```
+
+The uniform scale is `Math.min(targetWidth, targetHeight) / referenceSize`, using
+the target's rendered bounding rectangle. A `300 × 100` target uses scale `1`;
+the same target at `150 × 50` uses `0.5`, and at `600 × 200` uses `2`. Both axes
+use the same scale, so particles retain their shape. The shorter side is used
+instead of area, diagonal, or width: adding characters to a wide, single-line
+heading does not enlarge its flames while its height stays the same. Narrow or
+multiline targets use the same geometry rule; font size is never the scale input.
+
+This works with text, image, canvas, and generic element masks. Particle sizes,
+initial velocities, lift, spread, turbulence, drift, mask offsets, and canvas
+margins all scale together. Timing, lifetime, opacity, colors, expansion factors,
+and the input/output shape of `liftCurve` remain unchanged. `spriteSize` still
+sets the sprite texture resolution; its contribution to canvas margins scales.
+
+Mask sampling and emission run in reference coordinates. `mask.stepPx` and
+`mask.offset` are therefore measured at the reference size, and
+`particlesPerPixel` applies to reference-mask coverage. Uniform enlargement keeps
+the same emitter grid, emission schedule, and particle budget instead of adding
+particles with the displayed area. Changing shape or aspect ratio can change
+coverage, but existing `maxParticles` limits still apply. Text uses normalized
+font metrics for rasterization. Browser rounding of DOM text ranges can still
+shift a mask by roughly a reference pixel at some font sizes, changing edge
+samples, emitter weights, and seeded birth positions. Motion and fading from
+each particle's birth keep the same scale and lifetime rules.
+
+The effect checks target dimensions each animation frame and on viewport changes.
+Resizing rebuilds the mask and scales live particle geometry while preserving
+their ages and velocities in reference coordinates. It does not restart the
+animation. Content changes without a size change require replaying the effect.
+
+Keep `referenceSize` fixed across responsive layouts and replays. Computing it
+from the current target before every call would always select scale `1`. To keep
+a particular existing layout as your baseline, measure its shorter side once
+and use that value as the reference. A smaller reference makes the effect larger
+relative to the target; it also lowers normalized mask coverage and emission.
+
+Omit `referenceSize` for the existing pixel-based behavior. Non-number,
+non-finite, zero, or negative reference values also use scale `1`. A zero,
+negative, or non-finite target dimension uses scale `1`, with invalid sampling
+dimensions reduced to at least one pixel; a later valid resize is measured again.
+`canvas.pixelRatio` remains independent: it controls backing-store resolution,
+not particle geometry. Its existing minimum of `1` is unchanged.
+
 ### Custom Lift Curves
 
 Both `fire` and `smoke` accept `liftCurve?: (particleProgress: number) => number` in their shared `BurnParticleOptions`. Use any synchronous function to control how lift changes over each particle's lifetime:
@@ -233,7 +291,7 @@ Supported mask sources:
 | `burn(target, options)` | Starts the effect and returns a `BurnController`. |
 | `BurnInEffect` | Class API for direct construction when needed. |
 | `BurnController` | `{ cancel(): void; done: Promise<void> }`. |
-| `BurnOptions` | Typed configuration for presets, timing, particles, masks, reveal, canvas, and hooks. |
+| `BurnOptions` | Typed configuration for presets, reference size, timing, particles, masks, reveal, canvas, and hooks. |
 | `burnPresets` | Preset option map used by the resolver. |
 | `resolveBurnOptions(options)` | Resolves partial options into complete internal options. |
 
@@ -241,6 +299,7 @@ Supported mask sources:
 
 | Group | Controls |
 | --- | --- |
+| `referenceSize` | Optional shorter target side in CSS pixels for uniform spatial scaling and normalized emission. |
 | `timing` | Delay, ignition, burn, fade, ember, smoke, and easing durations. |
 | `fire` | Fire particle density, colors, lift and lift curve, spread, turbulence, size, lifetime, and blending. |
 | `smoke` | Smoke particle density, colors, lift and lift curve, drift, expansion, size, lifetime, and blending. |
